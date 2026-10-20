@@ -51,6 +51,13 @@
     { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 70, name: 'Phase 2: by ear' },
     { from: 25, speed: 300, warn: 0.5, gap: 1.0, chords: 0.5, labels: false, lead: 0.55, drift: 95, name: 'Phase 3: full volume' },
   ];
+  // Firing costs headroom: each note adds to your own volume meter, so
+  // mashing makes you clip. Cancelling a note refunds it.
+  const SHOT_COST = 7;
+  const SHOT_GAP = 0.22;      // seconds between notes
+  const HIT_DAMAGE = 1.5;     // a note landing on the boss
+  const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
+  const CUT_DAMAGE = 14;      // playing the held chord's missing note
   const name = (midi) => Piano.noteName(midi);
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -71,7 +78,7 @@
             <div class="how">
               <span><kbd>←</kbd> <kbd>→</kbd></span><span>Move</span>
               <span><kbd>Space</kbd></span><span>Dash (briefly untouchable)</span>
-              <span><kbd>A</kbd> to <kbd>K</kbd></span><span>Fire the notes of A major</span>
+              <span><kbd>A</kbd> to <kbd>K</kbd></span><span>Fire the notes of A major. Each note adds to your volume, so don’t spam</span>
               <span>Same note</span><span>Fire the note coming at you to cancel it</span>
               <span>Ear defenders</span><span>Catch them to block hits for a few seconds</span>
               <span>Missing note</span><span>When it holds a chord, play the missing note</span>
@@ -104,7 +111,7 @@
       phase, running: false, over: false, time: 0,
       boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
       player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0 },
-      meter: 0, shake: 0,
+      meter: 0, shake: 0, shotGap: 0, warnedClip: false,
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
       held: null, attackIn: 1.2, holdIn: 7, pickupIn: 9, banner: { text: PHASES[phase].name, t: 2 },
       firstHold: true,
@@ -147,10 +154,18 @@
 
   Level.piano.onNoteOn((midi) => {
     if (!S || !S.running) return;
+    // Cutting the feedback: the held chord's missing note (free, no gap).
+    if (S.held && midi % 12 === S.held.missing % 12) return cutFeedback();
+    if (S.shotGap > 0) return;
     const p = S.player;
+    S.shotGap = SHOT_GAP;
     S.shots.push({ x: p.x, y: p.y - 22, midi, pc: midi % 12 });
-    // Cutting the feedback: the held chord's missing note.
-    if (S.held && midi % 12 === S.held.missing % 12) cutFeedback();
+    S.meter = Math.min(100, S.meter + SHOT_COST);
+    if (S.meter >= 60 && !S.warnedClip) {
+      S.warnedClip = true;
+      S.texts.push({ x: p.x, y: p.y - 46, text: 'Too much noise! Slow down.', t: 1.6 });
+    }
+    if (S.meter >= 100) lose('clip');
   });
 
   // ---------- Boss attacks ----------
@@ -213,7 +228,7 @@
   function cutFeedback() {
     const triad = S.held.triad;
     endHold();
-    damage(14);
+    damage(CUT_DAMAGE);
     S.boss.stun = 1.6;
     S.warnings = [];
     Sound.chord(triad.notes, 0, 1.4, 0.55);
@@ -282,9 +297,12 @@
     ui.end.classList.add('show');
   }
 
-  function lose() {
+  function lose(reason) {
     const phase = S.phase;
-    finish('Too loud!', 'Your ears need a break. Try again from this phase.', [
+    const text = reason === 'clip'
+      ? 'You clipped: too many notes at once. Pick your shots. Try again from this phase.'
+      : 'Your ears need a break. Try again from this phase.';
+    finish(reason === 'clip' ? 'Clipped!' : 'Too loud!', text, [
       ['Retry', () => begin(phase), true],
     ]);
   }
@@ -361,7 +379,8 @@
     S.pickups.forEach((k) => { k.y += 70 * dt; });
     S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
     S.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
-    S.meter = Math.max(0, S.meter - 5 * dt);
+    S.meter = Math.max(0, S.meter - 6 * dt);
+    S.shotGap = Math.max(0, S.shotGap - dt);
     S.shake = Math.max(0, S.shake - dt);
     if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
 
@@ -372,11 +391,14 @@
           n.gone = s.gone = true;
           for (let i = 0; i < 8; i++) spark(n.x, n.y, '#C8B8FF');
           Sound.note(n.midi + 12, 0, 0.25, 0.18);
+          S.meter = Math.max(0, S.meter - SHOT_COST); // refunded
+          damage(CANCEL_DAMAGE);
+          if (!S.running) return;
         }
       }
       if (!s.gone && Math.abs(s.x - b.x) < 74 && s.y < b.y + 48 && s.y > b.y - 40) {
         s.gone = true;
-        damage(2.5);
+        damage(HIT_DAMAGE);
         spark(s.x, b.y + 40, '#9A7FE0');
       }
     }

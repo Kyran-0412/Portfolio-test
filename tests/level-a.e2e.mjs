@@ -47,9 +47,20 @@ try {
   // An A coming at you is cancelled by firing A.
   await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 0, midi: 57, pc: 9, kind: 'note', label: true }); });
   await page.keyboard.press('a');
+  const hpCancel = await S(() => window.__boss.boss.hp);
   await frame.waitForFunction(() => window.__boss.notes.length === 0, null, { timeout: 2000 });
-  assert.equal(await S(() => window.__boss.meter), 0);
-  console.log('✓ firing the same note cancels an incoming note');
+  assert.ok(await S(() => window.__boss.meter < 1), 'cancelling refunds the note');
+  assert.equal(hpCancel - (await S(() => window.__boss.boss.hp)), 3, 'cancelling reflects damage');
+  console.log('✓ firing the same note cancels an incoming note, refunds it and reflects damage');
+
+  // Mashing: notes come no faster than the gap, and each adds to the meter.
+  await calm();
+  await S(() => { window.__boss.shots = []; });
+  for (let i = 0; i < 6; i++) await page.keyboard.press('asdfgh'[i]);
+  const fired = await S(() => window.__boss.shots.length);
+  assert.ok(fired < 6, `rapid presses are limited (${fired} of 6 fired)`);
+  assert.ok(await S(() => window.__boss.meter) > 0, 'firing fills your meter');
+  console.log(`✓ rapid presses limited (${fired} of 6 fired) and each note costs volume`);
 
   // A different note passes through and hits you.
   await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 160, midi: 64, pc: 4, kind: 'note', label: true }); });
@@ -99,9 +110,16 @@ try {
   assert.equal(await S(() => window.__boss.boss.hp), 25, 'retry restarts phase 3');
   console.log('✓ a full volume meter loses the phase; Retry restarts it');
 
+  // Mashing until you clip loses the phase.
+  await calm();
+  for (let i = 0; i < 30; i++) { await page.keyboard.press('asdfghjk'[i % 8]); await page.waitForTimeout(230); if (await game.locator('#endCard.show').count()) break; }
+  await game.locator('#endCard.show', { hasText: 'Clipped!' }).waitFor({ timeout: 2000 });
+  await game.locator('#endButtons button', { hasText: 'Retry' }).click();
+  console.log('✓ spamming notes makes you clip and lose the phase');
+
   // Winning
   await calm();
-  await S(() => { window.__boss.boss.hp = 2; });
+  await S(() => { window.__boss.boss.hp = 1; });
   const bossX = await S(() => window.__boss.boss.x);
   await S((x) => { window.__boss.player.x = x; }, bossX);
   await frame.evaluate((x) => { window.__boss.player.x = x; }, bossX);
