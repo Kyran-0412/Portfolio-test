@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 1 Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #181818;
+    --panel: #242424;
+    --accent: #362D40;
+    --violet: #322D5A;
+    --mid: #5E3E84;
+    --bright: #9A7FE0;
+    --glow: #C8B8FF;
+    --text: #E6E1EC;
+    --quiet: #9A93A3;
+    --good: #7FD8A4;
+    --bad: #F08A8A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1, h2 { font-family: Oswald, Impact, sans-serif; font-weight: 600; letter-spacing: 0.02em; margin: 0 0 8px; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; color: var(--glow); }
+  p { margin: 0 0 12px; color: var(--quiet); }
+  section { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  button {
+    font: 600 14px Inter, sans-serif; color: var(--text); background: var(--accent);
+    border: 1px solid var(--mid); border-radius: 8px; padding: 8px 14px; cursor: pointer; margin: 4px 8px 4px 0;
+  }
+  button:hover:not(:disabled) { background: var(--mid); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  input[type=url] {
+    width: 100%; font: 14px Inter, sans-serif; color: var(--text); background: var(--bg);
+    border: 1px solid var(--mid); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+  }
+  .status { font-weight: 600; }
+  .ok { color: var(--good); }
+  .fail { color: var(--bad); }
+  .wait { color: var(--quiet); }
+  .keys { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .key {
+    width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+    font: 600 15px Oswald, sans-serif; background: var(--violet); color: var(--quiet); border: 1px solid var(--accent);
+    transition: background 0.4s, box-shadow 0.4s, color 0.4s;
+  }
+  .key.open { border-color: var(--mid); color: var(--text); }
+  .key.held { border: 2px dashed var(--glow); color: var(--glow); }
+  .key.placed { background: var(--bright); color: #181818; box-shadow: 0 0 14px 3px rgba(200, 184, 255, 0.55); }
+  ul.log { list-style: none; padding: 0; margin: 8px 0 0; }
+  ul.log li { padding: 2px 0; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Phase 1 Test</h1>
+  <p>Checks that this box can talk to the page, that progress saves, and that sounds work. Tell Claude what each section says.</p>
+
+  <section>
+    <h2>1. Connection to the page</h2>
+    <div id="connection" class="status wait">Waiting for the page code…</div>
+  </section>
+
+  <section>
+    <h2>2. Saving progress</h2>
+    <p>Win a level, place its key, then reload the page. The lit keys should still be lit.</p>
+    <div class="keys" id="keys"></div>
+    <div id="progressText" class="wait">No progress loaded yet.</div>
+    <div>
+      <button id="winBtn" disabled>Win level</button>
+      <button id="placeBtn" disabled>Place key</button>
+      <button id="resetBtn" disabled>Reset progress</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Built-in sound</h2>
+    <p>Plays a perfect fifth, then a major triad, using a simple built-in tone.</p>
+    <button id="toneBtn">Play test sound</button>
+    <span id="toneResult" class="wait"></span>
+  </section>
+
+  <section>
+    <h2>4. Your sample</h2>
+    <p>Upload any short MP3 to your Wix Media Manager, copy its link, and paste it here. If it works you'll hear the note, then a fifth and a triad made from it.</p>
+    <input type="url" id="sampleUrl" placeholder="https://static.wixstatic.com/mp3/....mp3">
+    <button id="sampleBtn">Load and play sample</button>
+    <ul class="log" id="sampleLog"></ul>
+  </section>
+</main>
+
+<script>
+(() => {
+  const KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'];
+  const LABELS = { 'F#': 'F♯', Db: 'D♭', Ab: 'A♭', Eb: 'E♭', Bb: 'B♭' };
+  const label = (k) => LABELS[k] || k;
+  const SEMITONES_FROM_C = { C: 0, G: 7, D: 2, A: 9, E: 4, B: 11, 'F#': 6, Db: 1, Ab: 8, Eb: 3, Bb: 10, F: 5 };
+  const semitone = (n) => Math.pow(2, n / 12);
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Talking to the page ----------
+  const insidePage = window.parent !== window;
+  let progress = null;
+  let connected = false;
+
+  const send = (message) => window.parent.postMessage(message, '*');
+
+  window.addEventListener('message', (event) => {
+    const message = event.data;
+    if (!message || message.type !== 'progress' || !message.progress) return;
+    if (!connected) {
+      connected = true;
+      setStatus($('connection'), 'ok', 'Connected to the page ✓');
+    }
+    progress = message.progress;
+    renderProgress();
+  });
+
+  // Keep saying "ready" until the page answers, in case the page code
+  // starts listening after this box loads.
+  if (insidePage) {
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (connected) return clearInterval(timer);
+      if (++tries > 20) {
+        clearInterval(timer);
+        setStatus($('connection'), 'fail',
+          '✗ No reply from the page code. Check the element ID is gameEmbed and the page code is saved.');
+        return;
+      }
+      send({ type: 'ready' });
+    }, 500);
+    send({ type: 'ready' });
+  } else {
+    setStatus($('connection'), 'fail', '✗ Not inside a page (opened on its own).');
+  }
+
+  function setStatus(el, kind, text) {
+    el.className = 'status ' + kind;
+    el.textContent = text;
+  }
+
+  // ---------- Progress display ----------
+  const keyEls = KEYS.map((k) => {
+    const el = document.createElement('div');
+    el.className = 'key';
+    el.textContent = label(k);
+    $('keys').appendChild(el);
+    return el;
+  });
+
+  function renderProgress() {
+    const next = KEYS[progress.placed.length] || null;
+    const holding = next && progress.held.includes(next);
+    KEYS.forEach((k, i) => {
+      const el = keyEls[i];
+      el.className = 'key'
+        + (progress.placed.includes(k) ? ' placed' : '')
+        + (progress.held.includes(k) ? ' held' : '')
+        + (k === next && !holding ? ' open' : '');
+    });
+    $('progressText').className = '';
+    $('progressText').textContent = next
+      ? `Placed: ${progress.placed.length} of 12. ${holding ? `Holding the ${label(next)} key.` : `Door ${label(next)} is open.`}`
+      : 'All 12 keys placed. Circle complete!';
+    $('winBtn').textContent = next ? `Win level ${label(next)}` : 'Win level';
+    $('placeBtn').textContent = next ? `Place key ${label(next)}` : 'Place key';
+    $('winBtn').disabled = !next || holding;
+    $('placeBtn').disabled = !holding;
+    $('resetBtn').disabled = false;
+  }
+
+  $('winBtn').onclick = () => {
+    const next = KEYS[progress.placed.length];
+    send({ type: 'levelComplete', key: next });
+  };
+  $('placeBtn').onclick = () => {
+    const next = KEYS[progress.placed.length];
+    send({ type: 'placeKey', key: next });
+    playInterval(261.63 * semitone(SEMITONES_FROM_C[next]));
+  };
+  $('resetBtn').onclick = () => send({ type: 'reset' });
+
+  // ---------- Sound ----------
+  let ctx = null;
+  function audio() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  function tone(freq, start, length) {
+    const a = audio();
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + length);
+    osc.connect(gain).connect(a.destination);
+    osc.start(start);
+    osc.stop(start + length + 0.05);
+  }
+
+  // Perfect fifth, then major triad, on a root frequency.
+  function playInterval(root) {
+    const a = audio();
+    const t = a.currentTime + 0.05;
+    tone(root, t, 0.9);
+    tone(root * 1.5, t, 0.9);
+    tone(root, t + 0.6, 1.4);
+    tone(root * 1.25, t + 0.6, 1.4);
+    tone(root * 1.5, t + 0.6, 1.4);
+  }
+
+  $('toneBtn').onclick = () => {
+    try {
+      playInterval(261.63);
+      setStatus($('toneResult'), 'ok', ' Played (C + G, then C–E–G). Did you hear it?');
+    } catch (err) {
+      setStatus($('toneResult'), 'fail', ' ✗ Sound failed: ' + err.message);
+    }
+  };
+
+  // ---------- Sample loading ----------
+
+  function log(kind, text) {
+    const li = document.createElement('li');
+    li.className = kind;
+    li.textContent = (kind === 'ok' ? '✓ ' : kind === 'fail' ? '✗ ' : '… ') + text;
+    $('sampleLog').appendChild(li);
+  }
+
+  function playBuffer(buffer, rate, start) {
+    const a = audio();
+    const src = a.createBufferSource();
+    const gain = a.createGain();
+    src.buffer = buffer;
+    src.playbackRate.value = rate;
+    gain.gain.value = 0.6;
+    src.connect(gain).connect(a.destination);
+    src.start(start);
+  }
+
+  $('sampleBtn').onclick = async () => {
+    $('sampleLog').innerHTML = '';
+    const url = $('sampleUrl').value.trim();
+    if (!url) return log('fail', 'Paste a sample link first.');
+
+    audio(); // unlock sound while we still have the click
+    let response;
+    try {
+      log('wait', 'Downloading…');
+      response = await fetch(url, { mode: 'cors' });
+    } catch (err) {
+      return log('fail', 'Blocked: the browser would not let the game read this file (likely a cross-site security rule). We will host samples on GitHub Pages instead.');
+    }
+    if (!response.ok) return log('fail', `The server answered ${response.status}. Check the link is right.`);
+    log('ok', 'Downloaded.');
+
+    let buffer;
+    try {
+      buffer = await audio().decodeAudioData(await response.arrayBuffer());
+    } catch (err) {
+      return log('fail', 'Downloaded, but the file could not be read as audio. Try an MP3 or WAV.');
+    }
+    log('ok', `Decoded: ${buffer.duration.toFixed(2)}s, ${buffer.numberOfChannels} channel(s), ${buffer.sampleRate} Hz.`);
+
+    const t = audio().currentTime + 0.05;
+    const gap = Math.min(Math.max(buffer.duration, 0.5), 1.2);
+    playBuffer(buffer, 1, t);
+    playBuffer(buffer, 1, t + gap);
+    playBuffer(buffer, semitone(7), t + gap);
+    playBuffer(buffer, 1, t + gap * 2);
+    playBuffer(buffer, semitone(4), t + gap * 2);
+    playBuffer(buffer, semitone(7), t + gap * 2);
+    log('ok', 'Playing: the note, then a fifth, then a triad. Samples work!');
+  };
+})();
+</script>
+</body>
+</html>

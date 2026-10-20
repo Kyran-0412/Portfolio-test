@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  KEYS, emptyProgress, nextKey, isDoorOpen, isCircleComplete,
+  completeLevel, placeKey, markIntroSeen, parseProgress,
+} from '../wix/public/progress.js';
+
+test('a new player can only open door C', () => {
+  const p = emptyProgress();
+  assert.equal(nextKey(p), 'C');
+  assert.equal(isDoorOpen(p, 'C'), true);
+  assert.equal(isDoorOpen(p, 'G'), false);
+});
+
+test('winning gives the key, placing it opens the next door', () => {
+  let p = completeLevel(emptyProgress(), 'C');
+  assert.deepEqual(p.held, ['C']);
+  assert.equal(isDoorOpen(p, 'G'), false, 'G stays shut until C is placed');
+  p = placeKey(p, 'C');
+  assert.deepEqual(p.held, []);
+  assert.deepEqual(p.placed, ['C']);
+  assert.equal(isDoorOpen(p, 'G'), true);
+  assert.equal(isDoorOpen(p, 'C'), true, 'beaten doors stay open for replays');
+});
+
+test('out-of-order wins and placements are ignored', () => {
+  const p = emptyProgress();
+  assert.equal(completeLevel(p, 'G'), p);
+  assert.equal(placeKey(p, 'C'), p, 'cannot place a key you do not hold');
+  const held = completeLevel(p, 'C');
+  assert.equal(completeLevel(held, 'C'), held, 'winning twice gives one key');
+  const placed = placeKey(held, 'C');
+  assert.equal(completeLevel(placed, 'C'), placed, 'replaying a beaten level gives nothing');
+});
+
+test('all 12 keys in order completes the circle', () => {
+  let p = emptyProgress();
+  for (const key of KEYS) p = placeKey(completeLevel(p, key), key);
+  assert.equal(isCircleComplete(p), true);
+  assert.equal(nextKey(p), null);
+});
+
+test('intro flag is set once', () => {
+  const p = markIntroSeen(emptyProgress());
+  assert.equal(p.seenIntro, true);
+  assert.equal(markIntroSeen(p), p);
+});
+
+test('broken or tampered storage is repaired', () => {
+  assert.deepEqual(parseProgress(null), emptyProgress());
+  assert.deepEqual(parseProgress('not json'), emptyProgress());
+  assert.deepEqual(parseProgress('"text"'), emptyProgress());
+  assert.deepEqual(
+    parseProgress(JSON.stringify({ placed: ['C', 'G', 'A'], held: ['A', 'D', 'E'], seenIntro: true })),
+    { v: 1, placed: ['C', 'G'], held: ['D'], seenIntro: true },
+    'keeps only the next key, drops placed keys out of order',
+  );
+  assert.deepEqual(
+    parseProgress(JSON.stringify({ placed: ['C'], held: ['G'] })),
+    { v: 1, placed: ['C'], held: ['G'], seenIntro: false },
+  );
+});
