@@ -21,6 +21,32 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## Setting up every level page and door
+
+Each level page is set up once. Unbuilt levels use the placeholder, and each new
+level later only means replacing that one box's code.
+
+| Door | Key | Door goes on | Door box ID | Page code | Level page URL slug | Level page code |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | C | Home | `door` | `home.js` | `level-c` | `level-c.js` |
+| 2 | G | Production Logs | `door` | `production-logs.js` | `level-g` | `level-g.js` |
+| 3 | D | Musical Elements | `door` | `musical-elements.js` | `level-d` | `level-d.js` |
+| 4 | A | Health and Safety | `door` | `health-and-safety.js` | `level-a` | `level-a.js` |
+| 5 | E | Job Roles in Music | `door` | `job-roles-in-music.js` | `level-e` | `level-e.js` |
+| 6 | B | Mixing Desk Operation | `door` | `mixing-desk-operation.js` | `level-b` | `level-b.js` |
+| 7 | F♯ | Live Production | `door` | `live-production.js` | `level-fsharp` | `level-fsharp.js` |
+| 8 | D♭ | Music Production | `door` | `music-production.js` | `level-dflat` | `level-dflat.js` |
+| 9 | A♭ | Performance | `door` | `performance.js` | `level-aflat` | `level-aflat.js` |
+| 10 | E♭ | DJing | `door` | `djing.js` | `level-eflat` | `level-eflat.js` |
+| 11 | B♭ | Circle of Fifths | `doorBb` | `circle-of-fifths.js` | `level-bflat` | `level-bflat.js` |
+| 12 | F | Circle of Fifths | `doorF` | (same page) | `level-f` | `level-f.js` |
+
+- **Doors:** Embed HTML box with `wix/embeds/door.html`, about 240 × 340 px, at the bottom of the page.
+- **Level pages:** hidden from the menu and from search engines. Embed HTML box with
+  `wix/embeds/level-placeholder.html` (Level C uses `level-c.html`), about 980 × 640 px, ID `gameEmbed`.
+- **Tip:** once one level page is set up, duplicate it (**Pages → ⋯ → Duplicate**), then change its name, URL slug and page code.
+- **Test buttons:** "Win level (test)" only appears in Preview. On the live site, unbuilt levels say "Coming soon" with a Back button.
+
 ## Phase 3: the Tutorial and the on-screen piano
 
 Every level now has an on-screen piano you play with the computer keyboard

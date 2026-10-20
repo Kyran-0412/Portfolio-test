@@ -73,6 +73,17 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-placeholder.png` });
   console.log('✓ placeholder level piano works; focus banner shows when the game loses focus');
 
+  // On the live site, unbuilt levels can't be won: no test button, just Back.
+  await page.goto(`${base}/dev/sim.html?page=production-logs&mode=site`);
+  await page.frameLocator('#door').locator('.door.open').click();
+  await page.waitForURL(/page=level-g&mode=site$/);
+  await game.locator('#startBtn').click();
+  await game.locator('#backBtn').waitFor();
+  assert.equal(await game.locator('#winBtn').count(), 0);
+  await game.locator('#backBtn').click();
+  await page.waitForURL(/page=production-logs&mode=site$/);
+  console.log('✓ live site: placeholder has no test button, Back returns to the page');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Phase 3 browser checks passed.');
 } finally {

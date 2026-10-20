@@ -17,16 +17,22 @@
 <script data-include="lib/piano.js"></script>
 <script data-include="lib/level.js"></script>
 <script>
-  // Stand-in for levels that aren't built yet: the piano works, and a test
-  // button finishes the level.
+  // Stand-in for levels that aren't built yet: the piano works. In Wix
+  // Preview a test button finishes the level; on the live site it can't be won.
   Level.setup({
     description: 'This level is still being built.',
     start(stage) {
-      stage.innerHTML = `
-        <h1>Coming soon</h1>
-        <p>Have a play on the keyboard, then use the test button to finish the level.</p>
-        <div class="buttons"><button class="primary" id="winBtn">Win level (test)</button></div>`;
-      stage.querySelector('#winBtn').onclick = () => Level.win();
+      stage.innerHTML = Level.testMode
+        ? `<h1>Coming soon</h1>
+           <p>Have a play on the keyboard, then use the test button to finish the level.</p>
+           <div class="buttons"><button class="primary" id="winBtn">Win level (test)</button></div>`
+        : `<h1>Coming soon</h1>
+           <p>This level is still being built. Have a play on the keyboard, and come back soon.</p>
+           <div class="buttons"><button id="backBtn">Back</button></div>`;
+      const win = stage.querySelector('#winBtn');
+      if (win) win.onclick = () => Level.win();
+      const back = stage.querySelector('#backBtn');
+      if (back) back.onclick = () => Level.back();
     },
   });
 </script>

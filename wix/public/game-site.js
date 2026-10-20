@@ -4,6 +4,7 @@
 
 import { local, session } from 'wix-storage-frontend';
 import wixLocationFrontend from 'wix-location-frontend';
+import wixWindowFrontend from 'wix-window-frontend';
 import {
   KEYS,
   STORAGE_KEY,
@@ -86,7 +87,9 @@ export function setupLevel(selector, key) {
   listen(embed, {
     ready: () => {
       const beaten = doorState(loadProgress(), key) === 'done';
-      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new' });
+      // Test buttons only appear in Preview, never on the live site.
+      const testMode = wixWindowFrontend.viewMode === 'Preview';
+      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new', testMode });
     },
     levelComplete: () => {
       const before = loadProgress();

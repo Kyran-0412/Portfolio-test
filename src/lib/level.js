@@ -4,6 +4,7 @@
 const Level = (() => {
   const $ = (id) => document.getElementById(id);
   let key = null;
+  let testMode = false;
   let onStart = () => {};
   let finishing = false;
 
@@ -70,6 +71,7 @@ const Level = (() => {
 
   Bridge.on('level', (message) => {
     key = message.key;
+    testMode = message.testMode === true;
     if (touchOnly) return show('phone');
     $('introEyebrow').textContent = `Level ${KEYS.indexOf(key) + 1} · Key of ${keyLabel(key)}`;
     $('introTitle').textContent = KEY_INFO[key].level;
@@ -106,6 +108,9 @@ const Level = (() => {
   return {
     piano,
     get key() { return key; },
+    // True in Wix Preview: levels may show test shortcuts.
+    get testMode() { return testMode; },
+    back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
     setup({ description, start }) {
       $('introText').textContent = description;
