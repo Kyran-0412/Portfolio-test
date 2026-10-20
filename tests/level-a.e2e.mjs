@@ -119,7 +119,7 @@ try {
 
   // Winning
   await calm();
-  await S(() => { window.__boss.boss.hp = 1; });
+  await S(() => { window.__boss.boss.hp = 1; window.__boss.boss.stun = 5; }); // stunned bosses hold still
   const bossX = await S(() => window.__boss.boss.x);
   await S((x) => { window.__boss.player.x = x; }, bossX);
   await frame.evaluate((x) => { window.__boss.player.x = x; }, bossX);
