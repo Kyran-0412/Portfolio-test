@@ -24,3 +24,6 @@ button:hover, button:focus-visible { background: var(--mid); box-shadow: 0 0 14p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+button:disabled:hover { background: var(--accent); }
+button.primary:disabled:hover { background: var(--mid); }

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 2: Wrong Note</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #title { font-size: 36px; }
+  .roll {
+    position: relative; width: 560px; height: 150px; margin: 6px 0 2px;
+    background: repeating-linear-gradient(to top, #1f1e25 0 12px, #1b1a20 12px 24px);
+    border: 1px solid var(--accent); border-radius: 8px;
+  }
+  .block {
+    position: absolute; height: 16px; border-radius: 5px; cursor: pointer;
+    background: var(--mid); border: 1px solid var(--bright);
+    font: 600 11px/16px var(--heading); color: transparent; text-align: center;
+    transition: background 0.15s, box-shadow 0.15s, color 0.3s;
+  }
+  .roll.locked .block { cursor: default; }
+  .roll:not(.locked) .block:hover { box-shadow: 0 0 12px rgba(200, 184, 255, 0.7); background: var(--bright); }
+  .block.playing { background: var(--glow); box-shadow: 0 0 16px rgba(200, 184, 255, 0.9); }
+  .block.miss { background: #c46a7a; border-color: #e7a3b0; }
+  .block.found { background: #c46a7a; border-color: #fff; box-shadow: 0 0 16px rgba(231, 163, 176, 0.9); }
+  .roll.revealed .block { color: var(--bg); background: var(--bright); }
+  .roll.revealed .block.found { color: #fff; background: #c46a7a; }
+  .controls { display: flex; gap: 12px; align-items: center; }
+  #feedback { min-height: 3em; max-width: 560px; color: var(--glow); }
+  #feedback.bad { color: #e7a3b0; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 2, key of G: a melody in G major has one note that isn’t in the key.
+  // A soft G drone plays underneath so the wrong note clashes.
+  // Each round: the melody (as played, wrong note included), which note is
+  // wrong, what it should have been, and the speed (seconds per note).
+  const ROUNDS = [
+    { notes: [67, 71, 75, 71, 67], wrong: 2, correct: 74, beat: 0.6 },                  // G B D♯ B G
+    { notes: [67, 69, 71, 73, 74, 72, 71, 69], wrong: 3, correct: 72, beat: 0.45 },     // C♯ instead of C
+    { notes: [67, 71, 69, 72, 71, 74, 65, 67], wrong: 6, correct: 66, beat: 0.38 },     // F instead of F♯
+  ];
+  const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const nameOf = (midi) => (midi % 12 === 5 ? 'F♮' : NAMES[midi % 12]);
+
+  let round = 0;
+  let playing = false;
+  let heard = false;
+  let misses = 0;
+  let ui = {};
+
+  Level.setup({
+    description: 'A melody in G major plays. One note doesn’t belong. Find it.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="round" id="round"></div>
+        <h1 id="title">Find the wrong note</h1>
+        <div class="roll locked" id="roll"></div>
+        <div class="controls"><button class="primary" id="playBtn">Play melody</button></div>
+        <p id="feedback"></p>`;
+      ui = {
+        round: stage.querySelector('#round'), roll: stage.querySelector('#roll'),
+        play: stage.querySelector('#playBtn'), feedback: stage.querySelector('#feedback'),
+      };
+      ui.play.onclick = () => play();
+      startRound();
+    },
+  });
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  // Draws the melody as blocks: higher notes sit higher, like a piano roll.
+  function drawRoll(notes) {
+    const low = Math.min(...notes) - 1, high = Math.max(...notes) + 1;
+    const width = 560, height = 150, gap = 8;
+    const blockW = (width - gap * (notes.length + 1)) / notes.length;
+    ui.roll.innerHTML = '';
+    ui.roll.className = 'roll locked';
+    notes.forEach((midi, i) => {
+      const block = document.createElement('div');
+      block.className = 'block';
+      block.dataset.index = i;
+      block.textContent = nameOf(midi);
+      block.style.left = `${gap + i * (blockW + gap)}px`;
+      block.style.width = `${blockW}px`;
+      block.style.top = `${(high - midi) / (high - low) * (height - 24) + 4}px`;
+      block.onclick = () => choose(i);
+      ui.roll.appendChild(block);
+    });
+  }
+
+  function startRound() {
+    const r = ROUNDS[round];
+    heard = false;
+    misses = 0;
+    ui.round.textContent = `Round ${round + 1} of ${ROUNDS.length}`;
+    drawRoll(r.notes);
+    ui.play.textContent = 'Play melody';
+    ui.play.disabled = false;
+    say('Press Play to hear the melody. Listen for the note that clashes.');
+  }
+
+  // Plays a melody over a soft G drone, lighting each block in time.
+  function play(notes = ROUNDS[round].notes, then) {
+    if (playing) return;
+    playing = true;
+    ui.play.disabled = true;
+    const beat = ROUNDS[round].beat;
+    const total = notes.length * beat;
+    Sound.chord([43, 50, 55], 0, total + 0.6, 0.22); // G2 D3 G3
+    notes.forEach((midi, i) => {
+      Sound.note(midi, i * beat + 0.15, beat * 0.9, 0.42);
+      setTimeout(() => {
+        ui.roll.querySelectorAll('.block').forEach((b, j) => b.classList.toggle('playing', j === i));
+      }, (i * beat + 0.15) * 1000);
+    });
+    setTimeout(() => {
+      ui.roll.querySelectorAll('.block').forEach((b) => b.classList.remove('playing'));
+      playing = false;
+      ui.play.disabled = false;
+      ui.play.textContent = 'Play again';
+      if (then) return then();
+      if (!heard) {
+        heard = true;
+        ui.roll.classList.remove('locked');
+        say('Click the note that doesn’t belong. You can play it again, or try notes on the piano.');
+      }
+    }, (total + 0.3) * 1000);
+  }
+
+  function choose(i) {
+    if (!heard || playing || ui.roll.classList.contains('locked')) return;
+    const r = ROUNDS[round];
+    const block = ui.roll.children[i];
+    Sound.note(r.notes[i], 0, 0.5, 0.42);
+
+    if (i !== r.wrong) {
+      misses++;
+      Sound.buzz();
+      block.classList.remove('miss');
+      void block.offsetWidth;
+      block.classList.add('miss');
+      setTimeout(() => block.classList.remove('miss'), 700);
+      // After two misses, a nudge towards the key signature.
+      return say(misses >= 2
+        ? 'That one fits. Hint: G major has one sharp, F♯. Every other note is a white key.'
+        : 'That one fits in G major. Listen again.', true);
+    }
+
+    // Found it: name every note, then play the melody fixed.
+    ui.roll.classList.add('locked', 'revealed');
+    block.classList.add('found');
+    const wrongName = nameOf(r.notes[r.wrong]);
+    const rightName = nameOf(r.correct);
+    say(`Got it. ${wrongName} isn’t in G major. It should be ${rightName}. Here’s the melody fixed.`);
+    ui.play.disabled = true;
+
+    const fixed = r.notes.map((m, j) => (j === r.wrong ? r.correct : m));
+    setTimeout(() => {
+      block.textContent = rightName;
+      block.classList.remove('found');
+      block.style.top = `${parseFloat(block.style.top) + (r.notes[r.wrong] - r.correct) * (126 / (Math.max(...r.notes) - Math.min(...r.notes) + 2))}px`;
+      play(fixed, () => {
+        round++;
+        if (round < ROUNDS.length) return setTimeout(startRound, 600);
+        say('Three for three. Your ear knows G major.');
+        setTimeout(() => Level.win(), 1400);
+      });
+    }, 1200);
+  }
+
+  // Space plays the melody too.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && ui.play && !ui.play.disabled) { e.preventDefault(); play(); }
+  });
+</script>
+</body>
+</html>

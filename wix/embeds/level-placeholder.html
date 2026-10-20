@@ -36,6 +36,9 @@ button:hover, button:focus-visible { background: var(--mid); box-shadow: 0 0 14p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+button:disabled:hover { background: var(--accent); }
+button.primary:disabled:hover { background: var(--mid); }
 </style>
 <style>
 /* lib/level.css */
@@ -63,6 +66,8 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+.skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
+.skip[hidden] { display: none; }
 
 /* Piano */
 .piano { --white-w: 46px; --black-w: 30px; width: calc(var(--whites) * var(--white-w)); user-select: none; -webkit-user-select: none; }
@@ -556,6 +561,7 @@ const Level = (() => {
     </section>
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
+      <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -616,6 +622,9 @@ const Level = (() => {
     Sound.unlock();
     window.focus();
     show('play');
+    // Preview only: lets you skip a level while testing the site.
+    $('skipBtn').hidden = !testMode;
+    $('skipBtn').onclick = () => Level.win();
     onStart($('stage'));
   };
 

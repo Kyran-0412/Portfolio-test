@@ -24,6 +24,14 @@ for (const name of (await readdir(srcDir)).filter((f) => f.endsWith('.html')).so
     last = m.index + m[0].length;
   }
   parts.push(html.slice(last));
-  await writeFile(join(outDir, name), parts.join(''));
+  const built = parts.join('');
+  // Every inline script must at least parse, so a typo can't reach Wix.
+  for (const [, code] of built.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    try { new Function(code); } catch (err) {
+      console.error(`✗ ${name}: script error: ${err.message}`);
+      process.exitCode = 1;
+    }
+  }
+  await writeFile(join(outDir, name), built);
   console.log('built wix/embeds/' + name);
 }

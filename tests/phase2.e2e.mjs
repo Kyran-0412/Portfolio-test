@@ -82,7 +82,7 @@ try {
   await atPage('level-g');
   game = page.frameLocator('#gameEmbed');
   await game.locator('#startBtn').click();
-  await game.locator('#winBtn').click();
+  await game.locator('#skipBtn').click(); // Preview-only skip
   await game.locator('#found.show').waitFor();
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of G.');
   assert.equal(await game.locator('#foundText').textContent(), '');

@@ -23,6 +23,7 @@ const Level = (() => {
     </section>
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
+      <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -83,6 +84,9 @@ const Level = (() => {
     Sound.unlock();
     window.focus();
     show('play');
+    // Preview only: lets you skip a level while testing the site.
+    $('skipBtn').hidden = !testMode;
+    $('skipBtn').onclick = () => Level.win();
     onStart($('stage'));
   };
 
