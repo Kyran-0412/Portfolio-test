@@ -254,12 +254,12 @@ const Sound = (() => {
 
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
-  // One note. `when` is seconds from now.
-  function note(midi, when = 0, length = 1.2, volume = 0.4) {
+  // Starts a note that rings until stop() is called. Used for held keys.
+  function voice(midi, t, volume) {
     const a = audio();
-    const t = a.currentTime + 0.03 + when;
     const gain = a.createGain();
     gain.connect(out);
+    const sources = [];
 
     const sample = nearestSample(midi);
     if (sample !== null) {
@@ -267,30 +267,50 @@ const Sound = (() => {
       src.buffer = buffers[sample];
       src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
       gain.gain.setValueAtTime(volume, t);
-      gain.gain.setTargetAtTime(0, t + length, 0.15);
       src.connect(gain);
       src.start(t);
-      src.stop(t + length + 1);
-      return;
+      sources.push(src);
+    } else {
+      const filter = a.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2600;
+      filter.connect(gain);
+      for (const detune of [-7, 7]) {
+        const osc = a.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = hz(midi);
+        osc.detune.value = detune;
+        osc.connect(filter);
+        osc.start(t);
+        sources.push(osc);
+      }
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(volume * 0.5, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(volume * 0.25, t + 0.3);
     }
 
-    const filter = a.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 2600;
-    filter.connect(gain);
-    for (const detune of [-7, 7]) {
-      const osc = a.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = hz(midi);
-      osc.detune.value = detune;
-      osc.connect(filter);
-      osc.start(t);
-      osc.stop(t + length + 0.6);
-    }
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(volume * 0.5, t + 0.02);
-    gain.gain.exponentialRampToValueAtTime(volume * 0.25, t + 0.3);
-    gain.gain.setTargetAtTime(0.0001, t + length, 0.2);
+    let stopped = false;
+    return {
+      stop(at = a.currentTime) {
+        if (stopped) return;
+        stopped = true;
+        const end = Math.max(at, a.currentTime);
+        gain.gain.cancelScheduledValues(end);
+        gain.gain.setTargetAtTime(0.0001, end, 0.12);
+        sources.forEach((src) => src.stop(end + 1));
+      },
+    };
+  }
+
+  // One note of a set length. `when` is seconds from now.
+  function note(midi, when = 0, length = 1.2, volume = 0.4) {
+    const t = audio().currentTime + 0.03 + when;
+    voice(midi, t, volume).stop(t + length);
+  }
+
+  // A held note: returns an object with stop().
+  function hold(midi, volume = 0.4) {
+    return voice(midi, audio().currentTime + 0.01, volume);
   }
 
   function chord(midis, when = 0, length = 1.2, volume = 0.4) {
@@ -334,7 +354,25 @@ const Sound = (() => {
   return {
     unlock: audio,
     note,
+    hold,
     chord,
+    // A wrong note: a soft low buzz.
+    buzz() {
+      const a = audio();
+      const t = a.currentTime + 0.02;
+      const osc = a.createOscillator();
+      const filter = a.createBiquadFilter();
+      const gain = a.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 98;
+      filter.type = 'lowpass';
+      filter.frequency.value = 500;
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(filter).connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    },
     // Locked door: two dull knocks.
     locked() {
       thump(0, 120, 55, 0.18, 0.5);

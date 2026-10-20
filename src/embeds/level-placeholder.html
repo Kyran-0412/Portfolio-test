@@ -8,133 +8,27 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
 <link data-include="lib/theme.css">
-<style>
-  html, body { height: 100%; background: var(--bg); }
-  .screen {
-    position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 24px 16px; gap: 12px;
-  }
-  .screen.show { display: flex; animation: fade-in 0.5s ease-out both; }
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-  .eyebrow { font: 500 14px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
-  h1 { margin: 0; font: 600 44px/1.15 var(--heading); letter-spacing: 0.02em; }
-  p { margin: 0; max-width: 460px; color: var(--quiet); }
-  p.lead { color: var(--text); font-size: 17px; }
-  .buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
-  button.primary { background: var(--mid); border-color: var(--bright); }
-
-  .key-art { width: 84px; height: 168px; margin-bottom: 4px; animation: rise 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both, shine 3s 1.1s ease-in-out infinite; }
-  @keyframes rise {
-    from { transform: translateY(140px) scale(0.6) rotate(-20deg); opacity: 0; }
-    to { transform: none; opacity: 1; }
-  }
-  @keyframes shine {
-    0%, 100% { filter: drop-shadow(0 0 8px rgba(154, 127, 224, 0.55)); }
-    50% { filter: drop-shadow(0 0 22px rgba(200, 184, 255, 0.9)); }
-  }
-  #found .text { animation: fade-in 0.6s 0.7s ease-out both; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-</style>
+<link data-include="lib/level.css">
 </head>
 <body>
-
-<section class="screen" id="phone">
-  <div class="eyebrow">Hidden level</div>
-  <h1>Best played on a computer</h1>
-  <p>This level needs a keyboard and a bigger screen. Come back on a laptop or desktop to play.</p>
-</section>
-
-<section class="screen" id="intro">
-  <div class="eyebrow" id="introEyebrow"></div>
-  <h1 id="introTitle"></h1>
-  <p id="introText">This level is still being built. Use the test button to finish it.</p>
-  <div class="buttons"><button class="primary" id="winBtn">Win level (test)</button></div>
-</section>
-
-<section class="screen" id="found">
-  <svg class="key-art" id="keyArt" viewBox="0 0 120 240" aria-hidden="true">
-    <defs>
-      <linearGradient id="keyFill" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#C8B8FF"/><stop offset="1" stop-color="#9A7FE0"/>
-      </linearGradient>
-    </defs>
-    <circle cx="60" cy="52" r="40" fill="none" stroke="url(#keyFill)" stroke-width="12"/>
-    <text id="keyArtLabel" x="60" y="64" text-anchor="middle" fill="#C8B8FF" font-family="Oswald, sans-serif" font-weight="600" font-size="32"></text>
-    <rect x="53" y="90" width="14" height="128" rx="4" fill="url(#keyFill)"/>
-    <rect x="66" y="176" width="26" height="12" rx="3" fill="url(#keyFill)"/>
-    <rect x="66" y="200" width="18" height="12" rx="3" fill="url(#keyFill)"/>
-  </svg>
-  <div class="text">
-    <h1 id="foundTitle"></h1>
-    <p class="lead" id="foundText"></p>
-    <div class="buttons" id="foundButtons"></div>
-  </div>
-</section>
-
 <script data-include="lib/keys.js"></script>
 <script data-include="lib/bridge.js"></script>
 <script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
 <script>
-  const $ = (id) => document.getElementById(id);
-  let key = null;
-  let finishing = false;
-
-  function show(id) {
-    document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-  }
-
-  function button(text, onClick, primary) {
-    const b = document.createElement('button');
-    b.textContent = text;
-    if (primary) b.className = 'primary';
-    b.onclick = onClick;
-    return b;
-  }
-
-  const touchOnly = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
-
-  Bridge.on('level', (message) => {
-    key = message.key;
-    if (touchOnly) return show('phone');
-    $('introEyebrow').textContent = `Level ${KEYS.indexOf(key) + 1} · Key of ${keyLabel(key)}`;
-    $('introTitle').textContent = KEY_INFO[key].level;
-    if (message.status === 'beaten') {
-      $('introText').textContent = "You've already found this key. Play again for fun.";
-    }
-    show('intro');
+  // Stand-in for levels that aren't built yet: the piano works, and a test
+  // button finishes the level.
+  Level.setup({
+    description: 'This level is still being built.',
+    start(stage) {
+      stage.innerHTML = `
+        <h1>Coming soon</h1>
+        <p>Have a play on the keyboard, then use the test button to finish the level.</p>
+        <div class="buttons"><button class="primary" id="winBtn">Win level (test)</button></div>`;
+      stage.querySelector('#winBtn').onclick = () => Level.win();
+    },
   });
-
-  $('winBtn').onclick = () => {
-    if (finishing) return;
-    finishing = true;
-    Sound.unlock();
-    Bridge.send({ type: 'levelComplete' });
-  };
-
-  Bridge.on('levelSaved', (message) => {
-    const label = keyLabel(key);
-    $('keyArtLabel').textContent = label;
-    const buttons = $('foundButtons');
-    buttons.innerHTML = '';
-
-    if (message.gotKey) {
-      $('foundTitle').textContent = `You found the key of ${label}.`;
-      Sound.keyFound(rootMidi(key));
-    } else {
-      $('foundTitle').textContent = 'Level complete';
-    }
-
-    // The tutorial is the only time the player is told what to do.
-    if (message.firstKey) {
-      $('foundText').textContent = 'You just discovered your first key. Take it to the circle of fifths to continue.';
-      buttons.append(button('Go to the circle of fifths', () => Bridge.send({ type: 'navigate', to: 'circle' }), true));
-    } else {
-      $('foundText').textContent = message.gotKey ? '' : 'You already have this key.';
-    }
-    buttons.append(button('Back', () => Bridge.send({ type: 'navigate', to: 'back' }), !message.firstKey));
-    show('found');
-  });
-
-  Bridge.start();
 </script>
 </body>
 </html>

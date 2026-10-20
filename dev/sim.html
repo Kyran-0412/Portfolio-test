@@ -60,7 +60,8 @@
   };
 
   if (LEVELS.includes(page.replace('level-', '')) && page.startsWith('level-')) {
-    frame('gameEmbed', ['level-placeholder.html', 900, 560]);
+    const built = { 'level-c': 'level-c.html' };
+    frame('gameEmbed', [built[page] || 'level-placeholder.html', 980, 640]);
   } else if (page === 'circle-of-fifths') {
     main.insertAdjacentHTML('beforeend', '<h1>Circle of Fifths</h1><div class="filler">Your explanation of the circle of fifths</div>');
     frame('circle', ['circle.html', 700, 800]);

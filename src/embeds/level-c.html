@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 1: Tutorial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  .step { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #instruction { font-size: 38px; }
+  .dots { display: flex; gap: 10px; height: 14px; margin: 4px 0; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--violet); border: 1px solid var(--accent); transition: background 0.3s, box-shadow 0.3s; }
+  .dot.on { background: var(--bright); box-shadow: 0 0 10px rgba(200, 184, 255, 0.8); }
+  #feedback { min-height: 1.5em; color: var(--glow); }
+  #feedback.bad { color: #e7a3b0; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 1, key of C: learn the keyboard, play the C major scale, play a fifth.
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 0]; // C D E F G A B C, as note names (0 = C)
+  const LETTER = { 0: 'A', 2: 'S', 4: 'D', 5: 'F', 7: 'G', 9: 'H', 11: 'J' };
+  const name = (pc) => Piano.noteName(pc);
+  let ui = {};
+
+  Level.setup({
+    description: 'Your computer keyboard is a piano. Learn to play it, then play the C major scale.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="step" id="step"></div>
+        <h1 id="instruction"></h1>
+        <p id="hint"></p>
+        <div class="dots" id="dots"></div>
+        <p id="feedback"></p>`;
+      ui = {
+        step: stage.querySelector('#step'), instruction: stage.querySelector('#instruction'),
+        hint: stage.querySelector('#hint'), dots: stage.querySelector('#dots'), feedback: stage.querySelector('#feedback'),
+      };
+      stepOne();
+    },
+  });
+
+  const piano = Level.piano;
+  let onNote = () => {};
+  piano.onNoteOn((midi) => onNote(midi % 12, midi));
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  function wrong(midi, text) {
+    Sound.buzz();
+    piano.mark(midi, 'bad');
+    say(text, true);
+  }
+
+  function stepOne() {
+    ui.step.textContent = 'Step 1 of 3';
+    ui.instruction.textContent = 'Press A to play C';
+    ui.hint.textContent = 'The keys A to K are the white keys. W, E, T, Y and U are the black keys.';
+    piano.clearMarks();
+    piano.markPitch(0);
+    onNote = (pc, midi) => {
+      if (pc !== 0) return wrong(midi, `That’s ${name(pc)}. C is the A key, on the far left.`);
+      piano.mark(midi, 'good');
+      say('Nice. That’s C.');
+      onNote = () => {};
+      setTimeout(stepTwo, 900);
+    };
+  }
+
+  function stepTwo() {
+    let index = 0;
+    ui.step.textContent = 'Step 2 of 3';
+    ui.instruction.textContent = 'Play the C major scale';
+    ui.hint.textContent = 'Follow the glowing keys from C up to the next C. It uses only the white keys.';
+    ui.dots.innerHTML = SCALE.map(() => '<span class="dot"></span>').join('');
+    say('');
+    const target = () => {
+      piano.clearMarks();
+      piano.markPitch(SCALE[index]);
+    };
+    target();
+
+    onNote = (pc, midi) => {
+      const want = SCALE[index];
+      if (pc !== want) {
+        const letter = index === SCALE.length - 1 ? 'K' : LETTER[want];
+        return wrong(midi, `Not quite. Next is ${name(want)} (the ${letter} key).`);
+      }
+      piano.mark(midi, 'good');
+      ui.dots.children[index].classList.add('on');
+      say('');
+      index++;
+      if (index < SCALE.length) return target();
+      piano.clearMarks();
+      say('That’s the C major scale.');
+      onNote = () => {};
+      setTimeout(stepThree, 1100);
+    };
+  }
+
+  function stepThree() {
+    ui.step.textContent = 'Step 3 of 3';
+    ui.instruction.textContent = 'Play a perfect fifth';
+    ui.hint.textContent = 'Hold A (C), then press G (G) so both notes ring together.';
+    ui.dots.innerHTML = '';
+    say('');
+    piano.clearMarks();
+    piano.markPitch(0);
+    piano.markPitch(7);
+
+    onNote = (pc, midi) => {
+      if (pc !== 0 && pc !== 7) return wrong(midi, `That’s ${name(pc)}. You need C and G.`);
+      const held = new Set(piano.held().map((m) => m % 12));
+      if (!(held.has(0) && held.has(7))) return say(pc === 0 ? 'Keep holding C and add G.' : 'Keep holding G and add C.');
+      piano.mark(midi, 'good');
+      piano.clearMarks();
+      say('That’s a perfect fifth, the sound that holds the circle together.');
+      onNote = () => {};
+      setTimeout(() => Level.win(), 1600);
+    };
+  }
+</script>
+</body>
+</html>

@@ -11,6 +11,19 @@ const saved = async () => JSON.parse(await page.evaluate(() => localStorage.getI
 const keyIconShown = () => page.evaluate(() => !document.getElementById('keyIcon').hidden);
 page.on('dialog', (d) => d.accept());
 
+// Beats the C tutorial with the computer keyboard.
+async function playTutorial(game) {
+  await game.locator('#instruction', { hasText: 'Press A' }).waitFor();
+  await page.keyboard.press('a');
+  await game.locator('#instruction', { hasText: 'scale' }).waitFor();
+  for (const k of 'asdfghjk') await page.keyboard.press(k);
+  await game.locator('#instruction', { hasText: 'fifth' }).waitFor();
+  await page.keyboard.down('a');
+  await page.keyboard.down('g');
+  await page.keyboard.up('g');
+  await page.keyboard.up('a');
+}
+
 try {
   await go('home');
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
@@ -30,7 +43,8 @@ try {
   let game = page.frameLocator('#gameEmbed');
   await game.locator('#intro.show').waitFor();
   assert.equal(await game.locator('#introTitle').textContent(), 'Tutorial');
-  await game.locator('#winBtn').click();
+  await game.locator('#startBtn').click();
+  await playTutorial(game);
   await game.locator('#found.show').waitFor();
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of C.');
   assert.match(await game.locator('#foundText').textContent(), /first key. Take it to the circle/);
@@ -67,6 +81,7 @@ try {
   await door.locator('.door').click();
   await atPage('level-g');
   game = page.frameLocator('#gameEmbed');
+  await game.locator('#startBtn').click();
   await game.locator('#winBtn').click();
   await game.locator('#found.show').waitFor();
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of G.');

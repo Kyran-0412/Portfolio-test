@@ -15,10 +15,27 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/pages/*.js` | Page code, one file per page | Each page's code panel |
 | `wix/embeds/door.html` | A door | Embed HTML box, ID `door` |
 | `wix/embeds/circle.html` | The circle of fifths graphic | Embed HTML box, ID `circle` |
-| `wix/embeds/level-placeholder.html` | Stand-in level with a test win button | Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-c.html` | Level 1, the Tutorial | Level C page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Phase 3: the Tutorial and the on-screen piano
+
+Every level now has an on-screen piano you play with the computer keyboard
+(A–K white keys, W E T Y U black keys, Z / X to change octave) or by clicking.
+
+1. **Level C page:** open the Embed HTML box, replace its code with `wix/embeds/level-c.html`, and resize it to about **980 × 640 px**.
+2. **Level G page:** replace its code with the new `wix/embeds/level-placeholder.html` and resize it to about **980 × 640 px**.
+3. **Try it in Preview:** reset progress on the circle page, then go through door C. Press **Start**, then:
+   1. Press **A** to play C.
+   2. Play the C major scale (**A S D F G H J K**), following the glowing keys.
+   3. Hold **A** and **G** together for a perfect fifth.
+
+   The key-found screen should appear as before.
+
+Nothing else changes: the doors, circle and page code stay as they are.
 
 ## Phase 2: doors, levels and the circle
 
