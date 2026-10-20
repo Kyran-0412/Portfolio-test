@@ -19,8 +19,11 @@
 
   .door {
     position: relative; width: 160px; height: 260px; perspective: 700px; cursor: pointer;
-    opacity: 0; transition: opacity 0.6s, filter 0.4s; outline: none;
+    opacity: 0.45; transition: opacity 0.6s, filter 0.4s; outline: none;
   }
+  /* Before the page code answers, the door shows dim with no letter. If it
+     stays like that in Preview, the page code or the box ID needs checking. */
+  .plaque:empty { display: none; }
   .door.locked, .door.open, .door.done { opacity: 1; }
 
   .frame {
