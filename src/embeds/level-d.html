@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 3: Key Signature Lock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #title { font-size: 34px; }
+  .lock {
+    position: relative; display: flex; gap: 10px; padding: 18px 22px 16px; margin: 58px 0 4px;
+    background: linear-gradient(#26232d, #1c1a21); border: 2px solid var(--accent); border-radius: 14px;
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.6);
+    transition: border-color 0.4s, box-shadow 0.4s;
+  }
+  .lock.open { border-color: var(--bright); box-shadow: 0 0 26px rgba(200, 184, 255, 0.55), inset 0 2px 10px rgba(0, 0, 0, 0.6); }
+  .lock.shake { animation: shake 0.45s ease-out; }
+  @keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+  .shackle {
+    position: absolute; left: 50%; top: -38px; width: 120px; height: 46px; transform: translateX(-50%);
+    border: 10px solid var(--accent); border-bottom: 0; border-radius: 60px 60px 0 0;
+    transition: transform 0.6s cubic-bezier(0.3, 1.4, 0.5, 1), border-color 0.4s; z-index: -1;
+  }
+  .lock.open .shackle { transform: translateX(-50%) translateY(-16px); border-color: var(--bright); }
+  .tumbler {
+    width: 58px; height: 92px; border-radius: 10px; cursor: pointer; user-select: none;
+    background: linear-gradient(#3a3544, #2a2632 45%, #1d1b22); border: 1px solid #0e0d11;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+  .tumbler:hover { box-shadow: 0 0 12px rgba(154, 127, 224, 0.5); }
+  .tumbler:active { transform: scale(0.96); }
+  .tumbler .letter { font: 600 30px/1 var(--heading); color: var(--text); }
+  .tumbler .acc { font: 600 22px/1 var(--heading); color: var(--quiet); min-height: 22px; }
+  .tumbler.sharp { background: linear-gradient(#5e3e84, #3d2f55 45%, #2a2238); }
+  .tumbler.sharp .acc { color: var(--glow); }
+  .tumbler.click { box-shadow: 0 0 16px rgba(200, 184, 255, 0.85); }
+  .controls { display: flex; gap: 12px; }
+  #feedback { min-height: 3em; max-width: 560px; color: var(--glow); }
+  #feedback.bad { color: #e7a3b0; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 3, key of D: set a lock's tumblers to a key signature.
+  // Three locks, each one step clockwise round the circle: one more sharp each.
+  const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const ROUNDS = [
+    { key: 'G', sharps: ['F'] },
+    { key: 'D', sharps: ['F', 'C'] },
+    { key: 'A', sharps: ['F', 'C', 'G'] },
+  ];
+  // Piano note → which tumbler it sets, and to what.
+  const FROM_PIANO = {
+    0: ['C', false], 1: ['C', true], 2: ['D', false], 3: ['D', true], 4: ['E', false], 5: ['F', false],
+    6: ['F', true], 7: ['G', false], 8: ['G', true], 9: ['A', false], 10: ['A', true], 11: ['B', false],
+  };
+
+  let round = 0;
+  let sharp = {};
+  let busy = false;
+  let tries = 0;
+  let ui = {};
+
+  Level.setup({
+    description: 'Set each tumbler to natural or sharp to match the key signature, and the lock opens.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="round" id="round"></div>
+        <h1 id="title"></h1>
+        <div class="lock" id="lock"><div class="shackle"></div></div>
+        <div class="controls"><button class="primary" id="tryBtn">Try the lock</button></div>
+        <p id="feedback"></p>`;
+      ui = {
+        round: stage.querySelector('#round'), title: stage.querySelector('#title'),
+        lock: stage.querySelector('#lock'), tryBtn: stage.querySelector('#tryBtn'),
+        feedback: stage.querySelector('#feedback'),
+      };
+      LETTERS.forEach((letter) => {
+        const t = document.createElement('div');
+        t.className = 'tumbler';
+        t.dataset.letter = letter;
+        t.setAttribute('role', 'button');
+        t.innerHTML = `<span class="letter">${letter}</span><span class="acc"></span>`;
+        t.onclick = () => setTumbler(letter, !sharp[letter], true);
+        ui.lock.appendChild(t);
+      });
+      ui.tryBtn.onclick = tryLock;
+      startRound();
+    },
+  });
+
+  Level.piano.onNoteOn((midi) => {
+    if (!ui.lock || busy) return;
+    const [letter, isSharp] = FROM_PIANO[midi % 12];
+    setTumbler(letter, isSharp, false);
+  });
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  const pitchOf = (letter) => NATURAL[letter] + (sharp[letter] ? 1 : 0);
+
+  function setTumbler(letter, isSharp, playIt) {
+    if (busy) return;
+    sharp[letter] = isSharp;
+    const t = ui.lock.querySelector(`[data-letter="${letter}"]`);
+    t.classList.toggle('sharp', isSharp);
+    t.querySelector('.acc').textContent = isSharp ? '♯' : '♮';
+    t.setAttribute('aria-label', `${letter} ${isSharp ? 'sharp' : 'natural'}`);
+    if (playIt) Sound.note(60 + pitchOf(letter), 0, 0.5, 0.35);
+  }
+
+  function startRound() {
+    const r = ROUNDS[round];
+    tries = 0;
+    busy = false;
+    ui.lock.classList.remove('open');
+    ui.round.textContent = `Lock ${round + 1} of ${ROUNDS.length}`;
+    ui.title.textContent = `Set the lock to ${r.key} major`;
+    LETTERS.forEach((l) => setTumbler(l, false, false));
+    ui.tryBtn.disabled = false;
+    say(round === 0
+      ? 'Click a tumbler to switch it between ♮ and ♯, or play the note on the piano. Then try the lock.'
+      : `${r.key} major is one step clockwise from ${ROUNDS[round - 1].key}.`);
+  }
+
+  // Plays the scale the tumblers make, from the key's root up an octave.
+  function playScale(rootLetter) {
+    const start = LETTERS.indexOf(rootLetter);
+    let last = -1;
+    const notes = [];
+    for (let i = 0; i <= 7; i++) {
+      const letter = LETTERS[(start + i) % 7];
+      let midi = 60 + pitchOf(letter);
+      while (midi <= last) midi += 12;
+      if (i === 0 && midi > 66) midi -= 12;
+      notes.push(midi);
+      last = midi;
+    }
+    notes.forEach((m, i) => {
+      Sound.note(m, i * 0.22, 0.3, 0.38);
+      setTimeout(() => {
+        const t = ui.lock.querySelector(`[data-letter="${LETTERS[(start + i) % 7]}"]`);
+        t.classList.add('click');
+        setTimeout(() => t.classList.remove('click'), 200);
+      }, i * 220 + 30);
+    });
+    return notes.length * 0.22;
+  }
+
+  function tryLock() {
+    if (busy) return;
+    busy = true;
+    ui.tryBtn.disabled = true;
+    const r = ROUNDS[round];
+    const right = LETTERS.filter((l) => Boolean(sharp[l]) === r.sharps.includes(l)).length;
+    const length = playScale(r.key);
+    tries++;
+
+    setTimeout(() => {
+      if (right < LETTERS.length) {
+        Sound.locked();
+        ui.lock.classList.remove('shake');
+        void ui.lock.offsetWidth;
+        ui.lock.classList.add('shake');
+        const hint = tries >= 2 ? ` Hint: ${r.key} major has ${r.sharps.length} sharp${r.sharps.length > 1 ? 's' : ''}.` : '';
+        say(`${right} of 7 tumblers click into place. Does that scale sound major?${hint}`, true);
+        busy = false;
+        ui.tryBtn.disabled = false;
+        return;
+      }
+      // Open
+      ui.lock.classList.add('open');
+      Sound.unlocked();
+      Sound.chord([rootMidi(r.key), rootMidi(r.key) + 4, rootMidi(r.key) + 7], 0.15, 1.6, 0.45);
+      const list = r.sharps.map((l) => l + '♯').join(', ');
+      say(`Unlocked. ${r.key} major has ${r.sharps.length} sharp${r.sharps.length > 1 ? 's' : ''}: ${list}.`);
+      round++;
+      if (round < ROUNDS.length) return setTimeout(startRound, 2200);
+      setTimeout(() => say('Each step clockwise adds one sharp: F♯, then C♯, then G♯. That pattern runs all the way round.'), 1800);
+      setTimeout(() => Level.win(), 4600);
+    }, length * 1000 + 250);
+  }
+</script>
+</body>
+</html>

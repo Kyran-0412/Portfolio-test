@@ -382,6 +382,12 @@ const Sound = (() => {
       noise(0, 0.08, 900, 200, 0.25);
       thump(0.11, 110, 50, 0.16, 0.35);
     },
+    // A lock springing open: two clicks and a soft thud.
+    unlocked() {
+      noise(0, 0.03, 6000, 3000, 0.35);
+      noise(0.07, 0.03, 7000, 3500, 0.3);
+      thump(0.1, 160, 70, 0.2, 0.35);
+    },
     // Door swinging open.
     whoosh() {
       noise(0, 0.6, 300, 2400, 0.12);
