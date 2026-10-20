@@ -60,7 +60,7 @@ try {
   // Placeholder levels have the working piano too.
   await page.goto(`${base}/dev/sim.html?page=home`);
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D'] })));
-  await page.goto(`${base}/dev/sim.html?page=level-a`);
+  await page.goto(`${base}/dev/sim.html?page=level-a&embed=level-placeholder.html`);
   await game.locator('#startBtn').click();
   await page.keyboard.down('h');
   await game.locator('.piano-key.down[data-midi="69"]').waitFor();
@@ -74,14 +74,14 @@ try {
   console.log('✓ placeholder level piano works; focus banner shows when the game loses focus');
 
   // On the live site, unbuilt levels can't be won: no test button, just Back.
-  await page.goto(`${base}/dev/sim.html?page=health-and-safety&mode=site`);
+  await page.goto(`${base}/dev/sim.html?page=health-and-safety&mode=site&embed=level-placeholder.html`);
   await page.frameLocator('#door').locator('.door.open').click();
-  await page.waitForURL(/page=level-a&mode=site$/);
+  await page.waitForURL(/page=level-a&mode=site&embed=level-placeholder.html$/);
   await game.locator('#startBtn').click();
   await game.locator('#backBtn').waitFor();
   assert.equal(await game.locator('#winBtn').count(), 0);
   await game.locator('#backBtn').click();
-  await page.waitForURL(/page=health-and-safety&mode=site$/);
+  await page.waitForURL(/page=health-and-safety&mode=site&embed=level-placeholder.html$/);
   console.log('✓ live site: placeholder has no test button, Back returns to the page');
 
   assert.deepEqual(errors, [], 'no page errors');

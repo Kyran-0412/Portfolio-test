@@ -372,6 +372,27 @@ const Sound = (() => {
       noise(0, 0.08, 900, 200, 0.25);
       thump(0.11, 110, 50, 0.16, 0.35);
     },
+    // Getting hit in a fight: a short, quiet feedback squeal.
+    squeal() {
+      const a = audio();
+      const t = a.currentTime + 0.01;
+      const osc = a.createOscillator();
+      const gain = a.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2100, t);
+      osc.frequency.exponentialRampToValueAtTime(3200, t + 0.25);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.06, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.32);
+      noise(0, 0.12, 3000, 800, 0.12);
+    },
+    // A note landing on the boss.
+    hit() { thump(0, 190, 90, 0.12, 0.28); },
+    // Ear defenders blocking a note.
+    block() { noise(0, 0.1, 5000, 1500, 0.18); },
     // A lock springing open: two clicks and a soft thud.
     unlocked() {
       noise(0, 0.03, 6000, 3000, 0.35);

@@ -18,10 +18,21 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-c.html` | Level 1, the Tutorial | Level C page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-g.html` | Level 2, Wrong Note | Level G page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-d.html` | Level 3, Key Signature Lock | Level D page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-a.html` | Level 4, Feedback (boss fight) | Level A page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 4: Feedback (boss fight)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-a.html` | Level A page's Embed HTML box (replaces the placeholder) |
+
+Controls: ← → move, Space dashes, A–K fire the notes of A major.
 
 ## Level 3: Key Signature Lock
 

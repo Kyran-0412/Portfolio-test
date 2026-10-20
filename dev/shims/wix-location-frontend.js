@@ -8,7 +8,8 @@ export default {
   to(path) {
     const target = path.replace(/^\//, '') || 'home';
     window.__lastNavigation = path;
-    const mode = new URLSearchParams(location.search).get("mode");
-    location.href = `sim.html?page=${encodeURIComponent(target)}${mode ? `&mode=${mode}` : ""}`;
+    const params = new URLSearchParams(location.search);
+    const keep = ['mode', 'embed'].filter((k) => params.get(k)).map((k) => `&${k}=${params.get(k)}`).join('');
+    location.href = `sim.html?page=${encodeURIComponent(target)}${keep}`;
   },
 };

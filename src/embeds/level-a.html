@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 4: Feedback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 8px; }
+  .arena { position: relative; width: 900px; max-width: 100%; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
+  .overlay {
+    position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: rgba(18, 17, 22, 0.94); border-radius: 10px; text-align: center; padding: 16px;
+  }
+  .overlay.show { display: flex; animation: fade-in 0.3s ease-out both; }
+  .overlay h2 { margin: 0; font: 600 34px var(--heading); letter-spacing: 0.02em; }
+  .how { display: grid; grid-template-columns: auto auto; gap: 6px 18px; text-align: left; font-size: 14px; color: var(--text); }
+  .how kbd { font: 600 13px var(--heading); color: var(--glow); background: var(--panel); border: 1px solid var(--mid); border-radius: 5px; padding: 1px 7px; }
+  .piano.scale-mode { --white-w: 58px; }
+  .piano.scale-mode .piano-keys { height: 112px; }
+  .piano.scale-mode .piano-name { font-size: 13px; color: #362d40; opacity: 1; }
+  .piano.scale-mode .piano-help { visibility: hidden; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 4, key of A: boss fight against Feedback, a squealing speaker.
+  // You're at the bottom (← → move, Space dash), it's at the top. A–K fire the
+  // notes of A major upwards. Matching an incoming note's pitch cancels it.
+  const W = 900, H = 400;
+  const ROOT = 57; // A3
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
+  const TRIADS = [ // diatonic chords of A major, as MIDI notes
+    { name: 'A', notes: [57, 61, 64], major: true }, { name: 'D', notes: [62, 66, 69], major: true },
+    { name: 'E', notes: [64, 68, 71], major: true }, { name: 'Bm', notes: [59, 62, 66], major: false },
+    { name: 'C♯m', notes: [61, 64, 68], major: false }, { name: 'F♯m', notes: [66, 69, 73], major: false },
+  ];
+  // Phases start at these boss health levels; each is faster and harder.
+  const PHASES = [
+    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 50, name: 'Phase 1' },
+    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 70, name: 'Phase 2: by ear' },
+    { from: 25, speed: 300, warn: 0.5, gap: 1.0, chords: 0.5, labels: false, lead: 0.55, drift: 95, name: 'Phase 3: full volume' },
+  ];
+  const name = (midi) => Piano.noteName(midi);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  let canvas, ctx, ui = {};
+  let S = null;            // the fight's state
+  let keys = {};           // arrow keys held
+  let last = 0, paused = false, frame = 0;
+
+  Level.setup({
+    description: 'Feedback is screaming through the speakers. Cut it before your ears give out.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="arena">
+          <canvas id="arena" width="${W}" height="${H}"></canvas>
+          <div class="overlay show" id="howTo">
+            <h2>Feedback</h2>
+            <div class="how">
+              <span><kbd>←</kbd> <kbd>→</kbd></span><span>Move</span>
+              <span><kbd>Space</kbd></span><span>Dash (briefly untouchable)</span>
+              <span><kbd>A</kbd> to <kbd>K</kbd></span><span>Fire the notes of A major</span>
+              <span>Same note</span><span>Fire the note coming at you to cancel it</span>
+              <span>Ear defenders</span><span>Catch them to block hits for a few seconds</span>
+              <span>Missing note</span><span>When it holds a chord, play the missing note</span>
+            </div>
+            <div class="buttons"><button class="primary" id="fightBtn">Fight</button></div>
+          </div>
+          <div class="overlay" id="endCard">
+            <h2 id="endTitle"></h2>
+            <p id="endText"></p>
+            <div class="buttons" id="endButtons"></div>
+          </div>
+        </div>`;
+      canvas = stage.querySelector('#arena');
+      ctx = canvas.getContext('2d');
+      ui = {
+        howTo: stage.querySelector('#howTo'), end: stage.querySelector('#endCard'),
+        endTitle: stage.querySelector('#endTitle'), endText: stage.querySelector('#endText'),
+        endButtons: stage.querySelector('#endButtons'),
+      };
+      Level.piano.useScale(ROOT);
+      stage.querySelector('#fightBtn').onclick = (e) => { e.currentTarget.blur(); ui.howTo.classList.remove('show'); begin(0); };
+      newState(0);
+      requestAnimationFrame(loop);
+    },
+  });
+
+  // ---------- State ----------
+  function newState(phase) {
+    S = {
+      phase, running: false, over: false, time: 0,
+      boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
+      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0 },
+      meter: 0, shake: 0,
+      shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
+      held: null, attackIn: 1.2, holdIn: 7, pickupIn: 9, banner: { text: PHASES[phase].name, t: 2 },
+      firstHold: true,
+    };
+    window.__boss = S; // for automatic tests
+  }
+
+  function begin(phase) {
+    newState(phase);
+    S.running = true;
+    ui.end.classList.remove('show');
+    Level.piano.setEnabled(true);
+  }
+
+  // ---------- Input ----------
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'Space') {
+      e.preventDefault();
+      keys[e.code] = true;
+      if (e.code === 'Space' && !e.repeat) dash();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+    if (e.code === 'Space') e.preventDefault(); // so Space never clicks a focused button
+  });
+  window.addEventListener('blur', () => { paused = true; keys = {}; });
+  window.addEventListener('focus', () => { paused = false; last = performance.now(); });
+
+  function dash() {
+    const p = S && S.player;
+    if (!p || !S.running || p.dashCool > 0) return;
+    p.dash = 0.18;
+    p.dashCool = 0.9;
+    p.safe = Math.max(p.safe, 0.3);
+    // Read the arrows directly, so ← + Space together always dashes left.
+    p.dashDir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) || p.dir || 1;
+    Sound.whoosh();
+  }
+
+  Level.piano.onNoteOn((midi) => {
+    if (!S || !S.running) return;
+    const p = S.player;
+    S.shots.push({ x: p.x, y: p.y - 22, midi, pc: midi % 12 });
+    // Cutting the feedback: the held chord's missing note.
+    if (S.held && midi % 12 === S.held.missing % 12) cutFeedback();
+  });
+
+  // ---------- Boss attacks ----------
+  function aimX() {
+    const ph = PHASES[S.phase];
+    const p = S.player;
+    return Math.min(W - 20, Math.max(20, p.x + p.dir * 300 * ph.lead));
+  }
+
+  function attack() {
+    const ph = PHASES[S.phase];
+    const chord = Math.random() < ph.chords;
+    const tx = aimX();
+    if (chord) {
+      const triad = pick(TRIADS);
+      S.warnings.push({ t: ph.warn + 0.15, total: ph.warn + 0.15, tx, kind: 'chord', triad });
+    } else {
+      S.warnings.push({ t: ph.warn, total: ph.warn, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
+    }
+  }
+
+  function fire(w) {
+    const ph = PHASES[S.phase];
+    const ox = S.boss.x, oy = S.boss.y + 44;
+    const base = Math.atan2(S.player.y - oy, w.tx - ox);
+    const launch = (midi, angle, kind) => S.notes.push({
+      x: ox, y: oy, vx: Math.cos(angle) * ph.speed, vy: Math.sin(angle) * ph.speed,
+      midi, pc: midi % 12, kind, label: ph.labels,
+    });
+    if (w.kind === 'note') {
+      launch(w.midi, base, 'note');
+      Sound.note(w.midi, 0, 0.45, 0.4);
+    } else {
+      const spread = w.triad.major ? 0.3 : 0.14; // major chords spread wide, minor narrow
+      w.triad.notes.forEach((m, i) => launch(m, base + (i - 1) * spread, 'chord'));
+      Sound.chord(w.triad.notes, 0, 0.6, 0.5);
+    }
+  }
+
+  // The boss holds a chord with one note missing.
+  function hold() {
+    const triad = pick(TRIADS);
+    const missing = Math.floor(Math.random() * 3);
+    S.held = {
+      triad, missing: triad.notes[missing], index: missing, t: 4.5,
+      sounds: triad.notes.filter((_, i) => i !== missing).map((m) => Sound.hold(m, 0.18)),
+    };
+    if (S.firstHold) {
+      S.firstHold = false;
+      S.banner = { text: 'It’s holding a chord. Play the missing note!', t: 2.6 };
+    }
+  }
+
+  function endHold() {
+    if (!S.held) return;
+    S.held.sounds.forEach((s) => s.stop());
+    S.held = null;
+  }
+
+  function cutFeedback() {
+    const triad = S.held.triad;
+    endHold();
+    damage(14);
+    S.boss.stun = 1.6;
+    S.warnings = [];
+    Sound.chord(triad.notes, 0, 1.4, 0.55);
+    S.texts.push({ x: S.boss.x, y: S.boss.y + 70, text: 'Feedback cut!', t: 1.4 });
+    for (let i = 0; i < 24; i++) spark(S.boss.x, S.boss.y + 20, '#C8B8FF');
+  }
+
+  // Missing the held chord: it squeals out a fan of notes.
+  function squealBurst() {
+    const ph = PHASES[S.phase];
+    const ox = S.boss.x, oy = S.boss.y + 44;
+    [-0.6, -0.3, 0, 0.3, 0.6].forEach((off, i) => {
+      const a = Math.PI / 2 + off;
+      const midi = SCALE[i + 1];
+      S.notes.push({ x: ox, y: oy, vx: Math.cos(a) * ph.speed * 0.9, vy: Math.sin(a) * ph.speed * 0.9, midi, pc: midi % 12, kind: 'chord', label: ph.labels });
+    });
+    Sound.squeal();
+  }
+
+  // ---------- Damage ----------
+  function damage(amount) {
+    const b = S.boss;
+    b.hp = Math.max(0, b.hp - amount);
+    b.flash = 0.15;
+    Sound.hit();
+    if (b.hp <= 0) return win();
+    const next = PHASES.findIndex((ph, i) => i > S.phase && b.hp <= ph.from);
+    if (next > S.phase) {
+      S.phase = next;
+      S.banner = { text: PHASES[next].name, t: 2.2 };
+      S.notes.forEach((n) => { n.label = PHASES[next].labels; });
+    }
+  }
+
+  function hurt() {
+    const p = S.player;
+    if (p.safe > 0) return;
+    if (p.shield > 0) { Sound.block(); spark(p.x, p.y - 10, '#E2D9FF'); return; }
+    S.meter = Math.min(100, S.meter + 22);
+    p.safe = 0.9;
+    S.shake = 0.3;
+    Sound.squeal();
+    if (S.meter >= 100) lose();
+  }
+
+  function spark(x, y, color) {
+    const a = rand(0, Math.PI * 2), v = rand(60, 220);
+    S.sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.3, 0.7), color });
+  }
+
+  // ---------- Endings ----------
+  function finish(title, text, buttons) {
+    S.running = false;
+    endHold();
+    Level.piano.setEnabled(false);
+    ui.endTitle.textContent = title;
+    ui.endText.textContent = text;
+    ui.endButtons.innerHTML = '';
+    buttons.forEach(([label, fn, primary]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      if (primary) b.className = 'primary';
+      b.onclick = fn;
+      ui.endButtons.append(b);
+    });
+    ui.end.classList.add('show');
+  }
+
+  function lose() {
+    const phase = S.phase;
+    finish('Too loud!', 'Your ears need a break. Try again from this phase.', [
+      ['Retry', () => begin(phase), true],
+    ]);
+  }
+
+  function win() {
+    S.over = true;
+    S.running = false;
+    endHold();
+    S.notes = [];
+    S.warnings = [];
+    for (let i = 0; i < 40; i++) spark(S.boss.x, S.boss.y + 20, i % 2 ? '#C8B8FF' : '#9A7FE0');
+    Sound.chord([45, 57, 61, 64, 69], 0.1, 2.6, 0.6);
+    setTimeout(() => finish('Feedback cut', 'Silence, finally. The speaker’s calmed down.', []), 900);
+    setTimeout(() => Level.win(), 2600);
+  }
+
+  // ---------- Game loop ----------
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - (last || now)) / 1000);
+    last = now;
+    frame++;
+    if (S && S.running && !paused) update(dt);
+    if (S) draw();
+  }
+
+  function update(dt) {
+    const ph = PHASES[S.phase];
+    const b = S.boss, p = S.player;
+    S.time += dt;
+
+    // Player movement
+    p.dir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
+    const speed = p.dash > 0 ? 1300 : 380;
+    const dir = p.dash > 0 ? p.dashDir : p.dir;
+    p.x = Math.min(W - 24, Math.max(24, p.x + dir * speed * dt));
+    p.dash = Math.max(0, p.dash - dt);
+    p.dashCool = Math.max(0, p.dashCool - dt);
+    p.safe = Math.max(0, p.safe - dt);
+    p.shield = Math.max(0, p.shield - dt);
+
+    // Boss drifts to a new spot now and then; in phase 3 it follows you.
+    if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.3) b.target = rand(110, W - 110);
+    if (S.phase === 2) b.target = b.target * 0.98 + p.x * 0.02;
+    if (b.stun <= 0) b.x += Math.sign(b.target - b.x) * Math.min(Math.abs(b.target - b.x), ph.drift * dt);
+    b.stun = Math.max(0, b.stun - dt);
+    b.flash = Math.max(0, b.flash - dt);
+
+    // Attacks, held chords and pickups
+    if (b.stun <= 0) {
+      S.attackIn -= dt * (S.held ? 0.6 : 1);
+      if (S.attackIn <= 0) { attack(); S.attackIn = ph.gap * rand(0.85, 1.15); }
+      if (S.phase >= 1 && !S.held) {
+        S.holdIn -= dt;
+        if (S.holdIn <= 0) { hold(); S.holdIn = rand(8, 11); }
+      }
+    }
+    if (S.held) {
+      S.held.t -= dt;
+      if (S.held.t <= 0) { endHold(); squealBurst(); }
+    }
+    S.pickupIn -= dt;
+    if (S.pickupIn <= 0) { S.pickups.push({ x: rand(60, W - 60), y: -20 }); S.pickupIn = rand(12, 16); }
+
+    // Warnings count down, then fire.
+    S.warnings.forEach((w) => { w.t -= dt; });
+    S.warnings.filter((w) => w.t <= 0).forEach(fire);
+    S.warnings = S.warnings.filter((w) => w.t > 0);
+    b.warn = S.warnings.length ? 1 - Math.min(...S.warnings.map((w) => w.t / w.total)) : 0;
+
+    // Movement of everything else
+    S.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
+    S.shots.forEach((s) => { s.y -= 560 * dt; });
+    S.pickups.forEach((k) => { k.y += 70 * dt; });
+    S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+    S.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
+    S.meter = Math.max(0, S.meter - 5 * dt);
+    S.shake = Math.max(0, S.shake - dt);
+    if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
+
+    // Your note meets an incoming note of the same pitch: both cancel.
+    for (const s of S.shots) {
+      for (const n of S.notes) {
+        if (!n.gone && !s.gone && n.pc === s.pc && Math.hypot(n.x - s.x, n.y - s.y) < 26) {
+          n.gone = s.gone = true;
+          for (let i = 0; i < 8; i++) spark(n.x, n.y, '#C8B8FF');
+          Sound.note(n.midi + 12, 0, 0.25, 0.18);
+        }
+      }
+      if (!s.gone && Math.abs(s.x - b.x) < 74 && s.y < b.y + 48 && s.y > b.y - 40) {
+        s.gone = true;
+        damage(2.5);
+        spark(s.x, b.y + 40, '#9A7FE0');
+      }
+    }
+    if (!S.running) return;
+
+    // Incoming notes hitting you
+    for (const n of S.notes) {
+      if (!n.gone && Math.hypot(n.x - p.x, n.y - (p.y - 6)) < 22) { n.gone = true; hurt(); if (!S.running) return; }
+    }
+    for (const k of S.pickups) {
+      if (!k.gone && Math.abs(k.x - p.x) < 30 && Math.abs(k.y - p.y) < 30) {
+        k.gone = true;
+        p.shield = 5;
+        Sound.note(ROOT + 24, 0, 0.6, 0.25);
+        S.texts.push({ x: p.x, y: p.y - 40, text: 'Ear defenders!', t: 1.2 });
+      }
+    }
+
+    S.notes = S.notes.filter((n) => !n.gone && n.y < H + 20 && n.x > -20 && n.x < W + 20);
+    S.shots = S.shots.filter((s) => !s.gone && s.y > -20);
+    S.pickups = S.pickups.filter((k) => !k.gone && k.y < H + 20);
+    S.sparks = S.sparks.filter((s) => s.t > 0);
+    S.texts = S.texts.filter((t) => t.t > 0);
+  }
+
+  // ---------- Drawing ----------
+  function draw() {
+    const b = S.boss, p = S.player;
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    if (S.shake > 0) ctx.translate(rand(-4, 4) * S.shake * 3, rand(-3, 3) * S.shake * 3);
+
+    // Stage: faint floor lines and two light beams
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#16141c'); bg.addColorStop(1, '#0f0e13');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(94, 62, 132, 0.18)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) { ctx.beginPath(); ctx.moveTo(W / 2 + (i - 4.5) * 40, H * 0.55); ctx.lineTo(W / 2 + (i - 4.5) * 150, H); ctx.stroke(); }
+    for (const lx of [W * 0.18, W * 0.82]) {
+      const beam = ctx.createLinearGradient(lx, 0, lx, H);
+      beam.addColorStop(0, 'rgba(154, 127, 224, 0.10)'); beam.addColorStop(1, 'rgba(154, 127, 224, 0)');
+      ctx.fillStyle = beam;
+      ctx.beginPath(); ctx.moveTo(lx - 10, 0); ctx.lineTo(lx + 10, 0); ctx.lineTo(lx + 90, H); ctx.lineTo(lx - 90, H); ctx.fill();
+    }
+
+    // Warnings: aim lines from the speaker to where it's aiming
+    for (const w of S.warnings) {
+      const k = 1 - w.t / w.total;
+      ctx.setLineDash([6, 8]);
+      ctx.strokeStyle = `rgba(200, 184, 255, ${0.15 + k * 0.45})`;
+      ctx.lineWidth = 2;
+      const ox = b.x, oy = b.y + 44;
+      const base = Math.atan2(p.y - oy, w.tx - ox);
+      const angles = w.kind === 'chord' ? [-1, 0, 1].map((i) => base + i * (w.triad.major ? 0.3 : 0.14)) : [base];
+      for (const a of angles) { ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(a) * 420, oy + Math.sin(a) * 420); ctx.stroke(); }
+      ctx.setLineDash([]);
+    }
+
+    drawBoss(b);
+
+    // Held chord, shown above the boss's head... well, under it
+    if (S.held) {
+      const h = S.held;
+      const y = b.y + 92;
+      ctx.font = '600 12px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#9A93A3'; ctx.fillText(`${h.triad.name} chord · play the missing note`, b.x, y - 14);
+      h.triad.notes.forEach((m, i) => {
+        const x = b.x + (i - 1) * 40;
+        const missing = i === h.index;
+        ctx.fillStyle = missing ? `rgba(200, 184, 255, ${0.35 + 0.35 * Math.sin(S.time * 8)})` : '#5E3E84';
+        roundRect(x - 16, y - 2, 32, 24, 6); ctx.fill();
+        ctx.fillStyle = missing ? '#181818' : '#E6E1EC';
+        ctx.font = '600 15px Oswald, sans-serif';
+        ctx.fillText(missing ? '?' : name(m), x, y + 15);
+      });
+      ctx.fillStyle = 'rgba(200, 184, 255, 0.6)';
+      ctx.fillRect(b.x - 60, y + 28, 120 * (h.t / 4.5), 3);
+    }
+
+    // Incoming notes: blue for single notes, violet for chords
+    for (const n of S.notes) {
+      const color = n.kind === 'note' ? '#8fc4ff' : '#C8B8FF';
+      ctx.shadowColor = color; ctx.shadowBlur = 14;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      if (n.label) {
+        ctx.fillStyle = '#181818'; ctx.font = '600 11px Oswald, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(name(n.midi), n.x, n.y + 4);
+      }
+    }
+
+    // Your notes
+    for (const s of S.shots) {
+      ctx.fillStyle = '#9A7FE0'; ctx.shadowColor = '#9A7FE0'; ctx.shadowBlur = 10;
+      roundRect(s.x - 12, s.y - 9, 24, 18, 6); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#181818'; ctx.font = '600 11px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(name(s.midi), s.x, s.y + 4);
+    }
+
+    // Ear defenders pickups
+    for (const k of S.pickups) drawHeadphones(k.x, k.y, 0.7, '#E2D9FF', true);
+
+    drawPlayer(p);
+
+    for (const s of S.sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.6); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
+    for (const t of S.texts) {
+      ctx.globalAlpha = Math.min(1, t.t * 2);
+      ctx.fillStyle = '#C8B8FF'; ctx.font = '600 16px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    drawHud();
+  }
+
+  function drawBoss(b) {
+    const glow = b.warn;
+    const wobble = b.stun > 0 ? Math.sin(S.time * 30) * 3 : 0;
+    const x = b.x + wobble, y = b.y;
+    // Mic leaning into the speaker: the cause of the feedback
+    ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x + 96, y + 52); ctx.lineTo(x + 82, y + 2); ctx.stroke();
+    ctx.fillStyle = '#9A93A3';
+    ctx.beginPath(); ctx.ellipse(x + 80, y - 4, 7, 11, -0.4, 0, Math.PI * 2); ctx.fill();
+    // Feedback rings between mic and speaker
+    if (S.running && b.stun <= 0) {
+      ctx.strokeStyle = `rgba(200, 184, 255, ${0.25 + glow * 0.6})`; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const r = 8 + ((S.time * 30 + i * 9) % 26);
+        ctx.beginPath(); ctx.arc(x + 70, y + 4, r, Math.PI * 0.6, Math.PI * 1.3); ctx.stroke();
+      }
+    }
+    // Cabinet
+    ctx.fillStyle = b.flash > 0 ? '#5E3E84' : '#26232d';
+    ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 2;
+    roundRect(x - 62, y - 36, 124, 86, 10); ctx.fill(); ctx.stroke();
+    // Cone, glowing brighter as it gets ready to fire
+    const cone = ctx.createRadialGradient(x, y + 10, 2, x, y + 10, 30);
+    cone.addColorStop(0, `rgba(226, 217, 255, ${0.4 + glow * 0.6})`);
+    cone.addColorStop(0.5, `rgba(154, 127, 224, ${0.5 + glow * 0.5})`);
+    cone.addColorStop(1, '#1b1a20');
+    ctx.fillStyle = cone;
+    ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 10 + glow * 30;
+    ctx.beginPath(); ctx.arc(x, y + 10, 26 + Math.sin(S.time * 40) * (S.running ? 1.5 : 0), 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#121116';
+    ctx.beginPath(); ctx.arc(x, y - 24, 6, 0, Math.PI * 2); ctx.fill();
+    if (b.stun > 0) {
+      ctx.fillStyle = '#E2D9FF'; ctx.font = '600 13px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('STUNNED', x, y - 46);
+    }
+  }
+
+  function drawHeadphones(x, y, scale, color, defenders) {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(scale, scale);
+    ctx.strokeStyle = color; ctx.lineWidth = defenders ? 7 : 5; ctx.lineCap = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0, 0, 18, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    ctx.fillStyle = color;
+    roundRect(-24, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    roundRect(12, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlayer(p) {
+    const blink = p.safe > 0 && Math.floor(S.time * 20) % 2 === 0;
+    if (blink) return;
+    if (p.shield > 0) {
+      ctx.strokeStyle = `rgba(226, 217, 255, ${0.4 + 0.3 * Math.sin(S.time * 10)})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y - 6, 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    drawHeadphones(p.x, p.y - 4, 1, p.shield > 0 ? '#E2D9FF' : '#9A7FE0', p.shield > 0);
+  }
+
+  function drawHud() {
+    const b = S.boss;
+    ctx.textAlign = 'left'; ctx.font = '600 14px Oswald, sans-serif';
+    ctx.fillStyle = '#E6E1EC'; ctx.fillText('FEEDBACK', 16, 24);
+    ctx.fillStyle = '#26232d'; roundRect(96, 13, 260, 12, 6); ctx.fill();
+    ctx.fillStyle = '#9A7FE0'; roundRect(96, 13, 260 * (b.hp / 100), 12, 6); ctx.fill();
+    // Volume meter (your health), top right
+    ctx.textAlign = 'right'; ctx.fillStyle = '#E6E1EC'; ctx.font = '600 14px Oswald, sans-serif';
+    ctx.fillText('VOLUME', W - 236, 24);
+    ctx.fillStyle = '#26232d'; roundRect(W - 216, 13, 200, 12, 6); ctx.fill();
+    const meter = ctx.createLinearGradient(W - 216, 0, W - 16, 0);
+    meter.addColorStop(0, '#9A7FE0'); meter.addColorStop(0.7, '#c46a7a'); meter.addColorStop(1, '#ff5d7a');
+    ctx.fillStyle = meter; roundRect(W - 216, 13, 200 * (S.meter / 100), 12, 6); ctx.fill();
+    if (S.player.shield > 0) {
+      ctx.fillStyle = '#E2D9FF'; ctx.font = '500 12px Oswald, sans-serif';
+      ctx.fillText(`EAR DEFENDERS ${Math.ceil(S.player.shield)}`, W - 16, 42);
+    }
+    if (S.banner && S.running) {
+      ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
+      ctx.textAlign = 'center'; ctx.font = '600 26px Oswald, sans-serif'; ctx.fillStyle = '#C8B8FF';
+      ctx.fillText(S.banner.text, W / 2, H / 2 + 10);
+      ctx.globalAlpha = 1;
+    }
+    if (paused && S.running) {
+      ctx.textAlign = 'center'; ctx.font = '600 20px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
+      ctx.fillText('Paused: click the game to carry on', W / 2, H / 2 + 50);
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, Math.max(0, h), r) : ctx.rect(x, y, w, Math.max(0, h));
+  }
+</script>
+</body>
+</html>

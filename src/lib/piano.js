@@ -2,30 +2,32 @@
 // Ableton's and FL Studio's computer-keyboard piano) or by clicking.
 //   W E   T Y U   O P
 //  A S D F G H J K L ; '      Z / X shift the octave
-// Every level shows it. Levels listen with onNoteOn / onNoteOff and can mark
-// keys with mark(midi, 'target' | 'good' | 'bad').
+// Boss fights switch to scale mode: A S D F G H J K play the 8 notes of the
+// level's scale, so one hand can play while the other moves.
+// Levels listen with onNoteOn / onNoteOff and can mark keys with
+// mark(midi, 'target' | 'good' | 'bad').
 const Piano = (() => {
-  // Keyboard code → semitones above the lowest C shown.
-  const KEYMAP = {
-    KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8,
-    KeyH: 9, KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17,
-  };
-  const LETTERS = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J', 'K', 'O', 'L', 'P', ';', "'"];
+  const CHROMATIC_CODES = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY',
+    'KeyH', 'KeyU', 'KeyJ', 'KeyK', 'KeyO', 'KeyL', 'KeyP', 'Semicolon', 'Quote'];
+  const CHROMATIC_LETTERS = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J', 'K', 'O', 'L', 'P', ';', "'"];
+  const SCALE_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK'];
+  const SCALE_LETTERS = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K'];
   const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
   const BLACK = [1, 3, 6, 8, 10];
-  const SPAN = 18; // C to F above the next C
 
-  const noteName = (midi) => NAMES[midi % 12];
+  const noteName = (midi) => NAMES[((midi % 12) + 12) % 12];
   const octaveOf = (midi) => Math.floor(midi / 12) - 1;
 
-  function create(container, { octave = 4 } = {}) {
-    const minOctave = 2, maxOctave = 6;
+  function create(container, { octave: startOctave = 4 } = {}) {
     const listeners = { on: [], off: [] };
     const held = new Map(); // midi → sound
     const pressedCodes = new Map(); // keyboard code → midi
-    const keyEls = [];
     const targetPitches = new Set();
     let enabled = true;
+    let shift = 0; // octaves up or down from the starting layout
+    let layout = []; // [{ code, letter, midi, black, el }]
+    let scaleMode = false;
+    let chromaticBase = (startOctave + 1) * 12;
 
     container.classList.add('piano');
     container.innerHTML = `
@@ -37,38 +39,51 @@ const Piano = (() => {
     const keysEl = container.querySelector('.piano-keys');
     const octaveEl = container.querySelector('.piano-octave b');
 
-    // White keys sit in a row; black keys sit over the gaps.
-    let whiteIndex = 0;
-    for (let i = 0; i < SPAN; i++) {
-      const black = BLACK.includes(i % 12);
-      const key = document.createElement('div');
-      key.className = 'piano-key ' + (black ? 'black' : 'white');
-      key.innerHTML = `<span class="piano-letter">${LETTERS[i]}</span><span class="piano-name"></span>`;
-      if (black) key.style.left = `calc(${whiteIndex} * var(--white-w) - var(--black-w) / 2)`;
-      else whiteIndex++;
-      key.dataset.step = i;
-      keysEl.appendChild(key);
-      keyEls.push(key);
-    }
-    container.style.setProperty('--whites', whiteIndex);
+    const midiOf = (entry) => entry.midi + shift * 12;
+    const entryFor = (midi) => layout.find((k) => midiOf(k) === midi) || null;
 
-    const base = () => (octave + 1) * 12;
-    const keyFor = (midi) => keyEls[midi - base()] || null;
+    function render() {
+      keysEl.innerHTML = '';
+      let whiteIndex = 0;
+      layout.forEach((k) => {
+        const el = document.createElement('div');
+        el.className = 'piano-key ' + (k.black ? 'black' : 'white');
+        el.innerHTML = `<span class="piano-letter">${k.letter}</span><span class="piano-name"></span>`;
+        if (k.black) el.style.left = `calc(${whiteIndex} * var(--white-w) - var(--black-w) / 2)`;
+        else whiteIndex++;
+        keysEl.appendChild(el);
+        k.el = el;
+      });
+      container.style.setProperty('--whites', whiteIndex);
+      container.classList.toggle('scale-mode', scaleMode);
+      relabel();
+    }
 
     function relabel() {
-      octaveEl.textContent = octave;
-      keyEls.forEach((key, i) => {
-        const midi = base() + i;
-        key.dataset.midi = midi;
-        key.querySelector('.piano-name').textContent = i % 12 === 0 ? `C${octaveOf(midi)}` : '';
+      octaveEl.textContent = octaveOf(midiOf(layout[0]));
+      layout.forEach((k) => {
+        const midi = midiOf(k);
+        k.el.dataset.midi = midi;
+        const name = scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
+        k.el.querySelector('.piano-name').textContent = name;
+        k.el.classList.toggle('mark-target', targetPitches.has(midi % 12));
+        k.el.classList.remove('mark-good', 'mark-bad');
       });
+    }
+
+    function chromatic() {
+      scaleMode = false;
+      layout = CHROMATIC_CODES.map((code, i) => ({
+        code, letter: CHROMATIC_LETTERS[i], midi: chromaticBase + i, black: BLACK.includes(i % 12),
+      }));
+      render();
     }
 
     function down(midi, source) {
       if (!enabled || held.has(midi)) return;
       held.set(midi, Sound.hold(midi));
-      const key = keyFor(midi);
-      if (key) key.classList.add('down');
+      const entry = entryFor(midi);
+      if (entry) entry.el.classList.add('down');
       listeners.on.forEach((fn) => fn(midi, source));
     }
 
@@ -77,8 +92,8 @@ const Piano = (() => {
       if (!sound) return;
       sound.stop();
       held.delete(midi);
-      const key = keyFor(midi);
-      if (key) key.classList.remove('down');
+      const entry = entryFor(midi);
+      if (entry) entry.el.classList.remove('down');
       listeners.off.forEach((fn) => fn(midi));
     }
 
@@ -88,16 +103,12 @@ const Piano = (() => {
     }
 
     function setOctave(n) {
-      const next = Math.min(maxOctave, Math.max(minOctave, n));
-      if (next === octave) return;
+      const nextShift = shift + (n - octaveOf(midiOf(layout[0])));
+      const lowest = midiOf(layout[0]) + (nextShift - shift) * 12;
+      if (lowest < 36 || lowest > 84) return; // keep between C2 and C6
       releaseAll();
-      octave = next;
+      shift = nextShift;
       relabel();
-      // Marks follow note names (markPitch), so they stay on the right keys.
-      keyEls.forEach((k) => {
-        k.classList.toggle('mark-target', targetPitches.has(Number(k.dataset.midi) % 12));
-        k.classList.remove('mark-good', 'mark-bad');
-      });
     }
 
     // Computer keyboard
@@ -105,14 +116,15 @@ const Piano = (() => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'KeyZ' || e.code === 'KeyX') {
         e.preventDefault();
-        if (!e.repeat) setOctave(octave + (e.code === 'KeyZ' ? -1 : 1));
+        if (!e.repeat) setOctave(octaveOf(midiOf(layout[0])) + (e.code === 'KeyZ' ? -1 : 1));
         return;
       }
-      if (!(e.code in KEYMAP)) return;
+      const entry = layout.find((k) => k.code === e.code);
+      if (!entry) return;
       e.preventDefault();
       if (e.repeat || pressedCodes.has(e.code)) return;
       Sound.unlock();
-      const midi = base() + KEYMAP[e.code];
+      const midi = midiOf(entry);
       pressedCodes.set(e.code, midi);
       down(midi, 'keyboard');
     });
@@ -140,7 +152,7 @@ const Piano = (() => {
       window.addEventListener('pointercancel', release);
     });
 
-    relabel();
+    chromatic();
 
     return {
       onNoteOn: (fn) => listeners.on.push(fn),
@@ -148,27 +160,35 @@ const Piano = (() => {
       held: () => [...held.keys()],
       // Marks a key: 'target' glows (play this), 'good' and 'bad' flash.
       mark(midi, kind) {
-        const key = keyFor(midi);
-        if (!key) return;
-        if (kind === 'target') return key.classList.add('mark-target');
-        key.classList.remove('mark-good', 'mark-bad');
-        void key.offsetWidth;
-        key.classList.add('mark-' + kind);
-        setTimeout(() => key.classList.remove('mark-' + kind), 600);
+        const entry = entryFor(midi);
+        if (!entry) return;
+        const el = entry.el;
+        if (kind === 'target') return el.classList.add('mark-target');
+        el.classList.remove('mark-good', 'mark-bad');
+        void el.offsetWidth;
+        el.classList.add('mark-' + kind);
+        setTimeout(() => el.classList.remove('mark-' + kind), 600);
       },
       // Marks every key with this note name (in any octave) as a target.
       markPitch(pitchClass) {
         targetPitches.add(((pitchClass % 12) + 12) % 12);
-        keyEls.forEach((key) => {
-          if (targetPitches.has(Number(key.dataset.midi) % 12)) key.classList.add('mark-target');
-        });
+        relabel();
       },
       clearMarks() {
         targetPitches.clear();
-        keyEls.forEach((k) => k.classList.remove('mark-target', 'mark-good', 'mark-bad'));
+        relabel();
       },
+      // Scale mode: A S D F G H J K play root + each step (default: major scale).
+      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11, 12]) {
+        releaseAll();
+        scaleMode = true;
+        shift = 0;
+        layout = steps.map((step, i) => ({ code: SCALE_CODES[i], letter: SCALE_LETTERS[i], midi: root + step, black: false }));
+        render();
+      },
+      useChromatic() { releaseAll(); shift = 0; chromatic(); },
       setEnabled(on) { enabled = on; if (!on) releaseAll(); },
-      get octave() { return octave; },
+      get octave() { return octaveOf(midiOf(layout[0])); },
       setOctave,
     };
   }
