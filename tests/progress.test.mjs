@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  KEYS, emptyProgress, nextKey, isDoorOpen, isCircleComplete,
+  KEYS, LEVEL_PATHS, emptyProgress, nextKey, isDoorOpen, isCircleComplete, doorState,
   completeLevel, placeKey, markIntroSeen, parseProgress,
 } from '../wix/public/progress.js';
+import { readFileSync } from 'node:fs';
 
 test('a new player can only open door C', () => {
   const p = emptyProgress();
@@ -59,4 +60,27 @@ test('broken or tampered storage is repaired', () => {
     parseProgress(JSON.stringify({ placed: ['C'], held: ['G'] })),
     { v: 1, placed: ['C'], held: ['G'], seenIntro: false },
   );
+});
+
+test('doors show locked, open or done', () => {
+  let p = emptyProgress();
+  assert.equal(doorState(p, 'C'), 'open');
+  assert.equal(doorState(p, 'G'), 'locked');
+  p = completeLevel(p, 'C');
+  assert.equal(doorState(p, 'C'), 'done', 'held key counts as beaten');
+  assert.equal(doorState(p, 'G'), 'locked');
+  p = placeKey(p, 'C');
+  assert.equal(doorState(p, 'C'), 'done');
+  assert.equal(doorState(p, 'G'), 'open');
+});
+
+test('every key has a level page', () => {
+  assert.deepEqual(Object.keys(LEVEL_PATHS).sort(), [...KEYS].sort());
+  assert.equal(new Set(Object.values(LEVEL_PATHS)).size, KEYS.length);
+});
+
+test('embed key list matches the Wix key list', () => {
+  const source = readFileSync(new URL('../src/lib/keys.js', import.meta.url), 'utf8');
+  const embedKeys = eval(source.match(/const KEYS = (\[[^\]]+\]);/)[1]);
+  assert.deepEqual(embedKeys, KEYS);
 });

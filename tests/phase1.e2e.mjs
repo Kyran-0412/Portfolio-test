@@ -1,39 +1,8 @@
 // Browser test: runs the real page code and embed in the local Wix stand-in.
-import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
-
-// Use the project's Playwright if installed, otherwise the global one.
-const require = createRequire(import.meta.url);
-let playwright;
-try { playwright = require('playwright'); } catch {
-  playwright = require(join(execSync('npm root -g').toString().trim(), 'playwright'));
-}
-const { chromium } = playwright;
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
 import assert from 'node:assert/strict';
+import { start } from './helpers/browser.mjs';
 
-const root = new URL('..', import.meta.url).pathname;
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.wav': 'audio/wav' };
-const server = createServer(async (req, res) => {
-  const path = normalize(join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname)));
-  if (!path.startsWith(root)) return res.writeHead(403).end();
-  try {
-    const body = await readFile(path);
-    res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream' }).end(body);
-  } catch { res.writeHead(404).end(); }
-}).listen(0);
-const base = `http://localhost:${server.address().port}`;
-
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
-const page = await browser.newPage();
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-// Failed downloads are expected here (blocked fonts, the deliberately bad sample link).
-page.on('console', (m) => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errors.push(m.text()));
-// Fonts are not reachable in the sandbox; block them so the test is quick.
-await page.route(/fonts\.(googleapis|gstatic)\.com|\.invalid\//, (r) => r.abort());
+const { base, page, errors, close } = await start();
 
 try {
   await page.goto(`${base}/dev/phase1-sim.html`);
@@ -81,6 +50,5 @@ try {
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Phase 1 browser checks passed.');
 } finally {
-  await browser.close();
-  server.close();
+  await close();
 }

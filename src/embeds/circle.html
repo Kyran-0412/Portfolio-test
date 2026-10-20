@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circle of Fifths</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<style>
+  body { padding: 8px 0 16px; }
+  .wrap { position: relative; width: 100%; max-width: 640px; margin: 0 auto; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  .guide { fill: none; stroke: #27252f; stroke-width: 1.5; }
+  .guide.inner { stroke: #201f27; }
+  .spoke { stroke: #27252f; stroke-width: 1.5; }
+
+  .trail {
+    fill: none; stroke: var(--bright); stroke-width: 4; stroke-linecap: round;
+    stroke-dasharray: 0 12; transition: stroke-dasharray 1.4s ease-in-out 0.45s;
+  }
+
+  .node .body { transform-box: fill-box; transform-origin: center; }
+  .node .disc { fill: var(--violet); stroke: var(--accent); stroke-width: 2; transition: fill 0.6s, stroke 0.6s; }
+  .node .halo { fill: var(--glow); opacity: 0; transition: opacity 0.8s; transform-box: fill-box; transform-origin: center; }
+  .node .slot { fill: none; stroke: var(--glow); stroke-width: 2; stroke-dasharray: 5 7; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .node .name { font: 600 25px var(--heading); fill: var(--text); opacity: 0.8; text-anchor: middle; transition: fill 0.6s, opacity 0.6s; pointer-events: none; }
+  .node .alt { font: 500 13px var(--heading); fill: var(--quiet); text-anchor: middle; transition: fill 0.6s; pointer-events: none; }
+
+  .node.lit .disc { fill: var(--bright); stroke: var(--glow); }
+  .node.lit .halo { opacity: 0.5; }
+  .node.lit .name { fill: var(--bg); opacity: 1; }
+  .node.lit .alt { fill: #2a2340; }
+
+  /* A held key's slot shimmers. */
+  .node.ready { cursor: pointer; }
+  .node.ready .slot { opacity: 0.9; animation: spin 9s linear infinite; }
+  .node.ready .disc { animation: ready-pulse 2.4s ease-in-out infinite; }
+  .node.ready .name { opacity: 1; fill: var(--glow); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ready-pulse { 0%, 100% { stroke: var(--mid); } 50% { stroke: var(--glow); } }
+
+  /* The key going in. */
+  .node.inserting .body { animation: insert 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+  .node.inserting .halo { animation: bloom 1.8s ease-out both; }
+  @keyframes insert { 0% { transform: scale(1.45); opacity: 0.4; } 60% { transform: scale(0.94); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes bloom { 0% { opacity: 0; transform: scale(0.8); } 35% { opacity: 1; transform: scale(1.7); } 100% { opacity: 0.5; transform: scale(1); } }
+
+  /* Full circle: lit keys can be played, and a glow sweeps round. */
+  .complete .node { cursor: pointer; }
+  .complete .node .halo { animation: sweep 4.8s ease-in-out infinite; }
+  @keyframes sweep { 0%, 100% { opacity: 0.45; } 8% { opacity: 1; } 20% { opacity: 0.45; } }
+  .node.ping .body { animation: ping 0.5s ease-out; }
+  @keyframes ping { 40% { transform: scale(1.12); } }
+
+  .minor .disc { fill: #1e1d24; stroke: #2c2a34; stroke-width: 1.5; transition: fill 1s, stroke 1s; }
+  .minor .name { font: 500 15px var(--heading); fill: var(--quiet); opacity: 0.55; text-anchor: middle; pointer-events: none; transition: fill 1s, opacity 1s; }
+  .minor.awake .disc { fill: var(--moon); stroke: #fff; }
+  .minor.awake .name { fill: var(--bg); opacity: 1; }
+
+  .count { font: 600 34px var(--heading); fill: var(--text); text-anchor: middle; opacity: 0; transition: opacity 0.8s; }
+  .count-label { font: 500 12px var(--heading); letter-spacing: 0.2em; fill: var(--quiet); text-anchor: middle; opacity: 0; transition: opacity 0.8s; }
+  .has-progress .count, .has-progress .count-label { opacity: 1; }
+
+  .node:focus { outline: none; }
+  .node:focus-visible .disc { stroke: #fff; stroke-width: 3; }
+
+  .tip {
+    position: absolute; transform: translate(-50%, -100%); pointer-events: none; z-index: 2;
+    background: var(--panel); border: 1px solid var(--mid); border-radius: 8px; padding: 8px 12px;
+    font-size: 13px; line-height: 1.45; white-space: nowrap; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .tip.show { opacity: 1; }
+  .tip strong { display: block; font: 600 16px var(--heading); letter-spacing: 0.02em; }
+  .tip .quiet { color: var(--quiet); }
+  .tip .done { color: var(--glow); }
+
+  .message {
+    min-height: 1.6em; margin: 6px auto 0; max-width: 520px; text-align: center;
+    font: 500 19px var(--heading); letter-spacing: 0.03em; color: var(--glow);
+    opacity: 0; transition: opacity 1s;
+  }
+  .message.show { opacity: 1; }
+  .reset {
+    display: block; margin: 18px auto 0; background: none; border: 0; padding: 4px 8px;
+    font: 12px var(--body); color: #6d6774; text-decoration: underline; cursor: pointer; box-shadow: none;
+  }
+  .reset:hover, .reset:focus-visible { background: none; color: var(--quiet); box-shadow: none; }
+  .reset[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <svg id="circle" viewBox="0 0 640 640" role="img" aria-label="Circle of fifths">
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="5" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="soft" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="12"/>
+      </filter>
+    </defs>
+    <circle class="guide" cx="320" cy="320" r="236"/>
+    <circle class="guide inner" cx="320" cy="320" r="142"/>
+    <g id="spokes"></g>
+    <path id="trail" class="trail" pathLength="12" filter="url(#glow)"/>
+    <g id="minors"></g>
+    <g id="majors"></g>
+    <text class="count" id="count" x="320" y="326"></text>
+    <text class="count-label" x="320" y="348">KEYS PLACED</text>
+  </svg>
+  <div class="tip" id="tip"></div>
+</div>
+<p class="message" id="message" aria-live="polite"></p>
+<button class="reset" id="reset" hidden>Reset game progress</button>
+
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script>
+  const SVG = 'http://www.w3.org/2000/svg';
+  const CENTER = 320, OUTER = 236, INNER = 142;
+  const $ = (id) => document.getElementById(id);
+
+  const point = (i, r) => {
+    const angle = (-90 + i * 30) * Math.PI / 180;
+    return [CENTER + r * Math.cos(angle), CENTER + r * Math.sin(angle)];
+  };
+
+  function el(name, attrs, parent) {
+    const node = document.createElementNS(SVG, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  // ---------- Draw the circle ----------
+  // The trail runs clockwise from C all the way round (12 units long).
+  const [cx0, cy0] = point(0, OUTER);
+  const [cx6, cy6] = point(6, OUTER);
+  $('trail').setAttribute('d',
+    `M${cx0} ${cy0} A${OUTER} ${OUTER} 0 0 1 ${cx6} ${cy6} A${OUTER} ${OUTER} 0 0 1 ${cx0} ${cy0}`);
+
+  const nodes = {};
+  const minors = {};
+  KEYS.forEach((key, i) => {
+    const info = KEY_INFO[key];
+    const [x1, y1] = point(i, INNER + 30);
+    const [x2, y2] = point(i, OUTER - 44);
+    el('line', { class: 'spoke', x1, y1, x2, y2 }, $('spokes'));
+
+    const [mx, my] = point(i, INNER);
+    const minor = el('g', { class: 'minor', transform: `translate(${mx} ${my})` }, $('minors'));
+    el('circle', { class: 'disc', r: 25 }, minor);
+    el('text', { class: 'name', y: 5.5 }, minor).textContent = info.minor;
+    minors[key] = minor;
+
+    const [x, y] = point(i, OUTER);
+    const node = el('g', { class: 'node', transform: `translate(${x} ${y})`, 'data-key': key }, $('majors'));
+    const body = el('g', { class: 'body' }, node);
+    el('circle', { class: 'halo', r: 50, filter: 'url(#soft)' }, body);
+    el('circle', { class: 'slot', r: 46 }, body);
+    el('circle', { class: 'disc', r: 38 }, body);
+    const name = el('text', { class: 'name', y: info.alt ? 3 : 9 }, body);
+    name.textContent = info.label;
+    if (info.alt) el('text', { class: 'alt', y: 22 }, body).textContent = info.alt;
+    nodes[key] = node;
+
+    node.addEventListener('mouseenter', () => showTip(key));
+    node.addEventListener('mouseleave', hideTip);
+    node.addEventListener('focus', () => showTip(key));
+    node.addEventListener('blur', hideTip);
+    node.addEventListener('click', () => activate(key));
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(key); }
+    });
+  });
+
+  // ---------- State ----------
+  let progress = null;
+  let placing = false;
+  const isComplete = () => progress && progress.placed.length === KEYS.length;
+
+  function render(justPlaced) {
+    const placed = progress.placed;
+    const next = KEYS[placed.length];
+    const holding = Boolean(next) && progress.held.includes(next);
+
+    KEYS.forEach((key) => {
+      const node = nodes[key];
+      const lit = placed.includes(key);
+      const ready = holding && key === next;
+      node.classList.toggle('lit', lit);
+      node.classList.toggle('ready', ready);
+      node.classList.toggle('inserting', key === justPlaced);
+      const playable = ready || (isComplete() && lit);
+      node.setAttribute('tabindex', playable ? '0' : '-1');
+      node.setAttribute('role', playable ? 'button' : 'img');
+      node.setAttribute('aria-label', `${KEY_INFO[key].label} major${lit ? ', lit' : ''}${ready ? ', place your key here' : ''}`);
+    });
+
+    // Trail joins the placed keys; it closes the loop once all 12 are in.
+    const segments = isComplete() ? 12 : Math.max(0, placed.length - 1);
+    $('trail').style.strokeDasharray = `${segments} 12`;
+    $('trail').style.opacity = segments ? 1 : 0; // no stray dot when empty
+
+    const started = placed.length > 0 || progress.held.length > 0;
+    $('circle').classList.toggle('has-progress', started);
+    $('count').textContent = `${placed.length} / 12`;
+    $('reset').hidden = !started;
+
+    if (isComplete() && !justPlaced) {
+      $('circle').classList.add('complete');
+      say('The circle is complete.');
+    } else if (!isComplete()) {
+      $('circle').classList.remove('complete');
+    }
+  }
+
+  function say(text) {
+    const message = $('message');
+    message.textContent = text;
+    message.classList.toggle('show', Boolean(text));
+  }
+
+  Bridge.on('progress', (message) => {
+    progress = message.progress;
+    placing = false;
+    const justPlaced = message.justPlaced || null;
+    render(justPlaced);
+    if (!justPlaced) return;
+
+    Sound.insert(rootMidi(justPlaced));
+    // The first key is the only time the player is pointed onwards.
+    if (justPlaced === KEYS[0]) {
+      setTimeout(() => say(`Somewhere on the site, a door in ${keyLabel(KEYS[1])} has opened.`), 1800);
+    } else {
+      say('');
+    }
+    if (isComplete()) {
+      setTimeout(() => {
+        Sound.chord([53, 57, 60], 0, 0.9, 0.5);      // F major
+        Sound.chord([55, 59, 62], 0.8, 0.9, 0.5);    // G major
+        Sound.chord([48, 60, 64, 67, 72], 1.6, 3, 0.6); // home to C
+        $('circle').classList.add('complete');
+        say('The circle is complete.');
+      }, 2200);
+    }
+  });
+
+  function activate(key) {
+    if (!progress) return;
+    const node = nodes[key];
+    Sound.unlock();
+    if (node.classList.contains('ready') && !placing) {
+      placing = true;
+      hideTip();
+      Bridge.send({ type: 'placeKey', key });
+    } else if (isComplete()) {
+      Sound.fifth(rootMidi(key));
+      node.classList.remove('ping');
+      void node.getBBox();
+      node.classList.add('ping');
+    }
+  }
+
+  $('reset').onclick = () => {
+    if (confirm('Reset all game progress? Every key and door will start again.')) {
+      say('');
+      Bridge.send({ type: 'reset' });
+    }
+  };
+
+  // ---------- Tooltip ----------
+  function showTip(key) {
+    const info = KEY_INFO[key];
+    const i = KEYS.indexOf(key);
+    const [x, y] = point(i, OUTER);
+    const scale = $('circle').getBoundingClientRect().width / 640;
+    const node = nodes[key];
+    let html = `<strong>${info.label}${info.alt ? ' / ' + info.alt : ''} major</strong>`
+      + `<span class="quiet">${info.signature} · relative minor ${info.minor}</span>`;
+    if (node.classList.contains('lit')) html += `<br><span class="done">Level ${i + 1}: ${info.level} ✓</span>`;
+    if (node.classList.contains('ready')) html += '<br><span class="done">Your key fits here.</span>';
+    const tip = $('tip');
+    tip.innerHTML = html;
+    // Keys near the top show their tip underneath, so it isn't cut off.
+    const below = y < 200;
+    const half = tip.offsetWidth / 2 + 4;
+    const width = $('wrap').clientWidth;
+    tip.style.left = `${Math.min(Math.max(x * scale, half), width - half)}px`;
+    tip.style.top = `${(below ? y + 52 : y - 52) * scale}px`;
+    tip.style.transform = below ? 'translate(-50%, 0)' : '';
+    tip.classList.add('show');
+  }
+  function hideTip() { $('tip').classList.remove('show'); }
+
+  // Shown before the page answers (or when opened on its own): the plain circle.
+  progress = { held: [], placed: [] };
+  render(null);
+  progress = null;
+  Bridge.start();
+</script>
+</body>
+</html>

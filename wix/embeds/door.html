@@ -1,0 +1,401 @@
+<!-- Built from src/embeds/door.html. Paste this whole file into a Wix Embed HTML box (Code). -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Door</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* lib/theme.css */
+/* Site palette and fonts (Oswald headings, Inter text). */
+:root {
+  --bg: #181818;
+  --panel: #242424;
+  --accent: #362D40;
+  --violet: #322D5A;
+  --mid: #5E3E84;
+  --bright: #9A7FE0;
+  --glow: #C8B8FF;
+  --moon: #E2D9FF;
+  --text: #E6E1EC;
+  --quiet: #9A93A3;
+  --heading: Oswald, 'Arial Narrow', Impact, sans-serif;
+  --body: Inter, system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; color: var(--text); font: 15px/1.5 var(--body); }
+button {
+  font: 600 15px var(--body); color: var(--text); background: var(--accent);
+  border: 1px solid var(--mid); border-radius: 8px; padding: 10px 18px; cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+button:hover, button:focus-visible { background: var(--mid); box-shadow: 0 0 14px rgba(154, 127, 224, 0.45); outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+</style>
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  .stage { height: 100%; display: grid; place-items: center; }
+  .floor {
+    position: absolute; left: 50%; bottom: -10px; width: 210px; height: 18px; transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), transparent 70%); pointer-events: none;
+  }
+  .door.open .floor, .door.opening .floor { background: radial-gradient(ellipse at center, rgba(154, 127, 224, 0.35), transparent 70%); }
+
+  .door {
+    position: relative; width: 160px; height: 260px; perspective: 700px; cursor: pointer;
+    opacity: 0; transition: opacity 0.6s, filter 0.4s; outline: none;
+  }
+  .door.locked, .door.open, .door.done { opacity: 1; }
+
+  .frame {
+    position: absolute; inset: -8px -8px 0; pointer-events: none;
+    border: 6px solid var(--accent); border-bottom: 0; border-radius: 88px 88px 0 0;
+    transition: border-color 0.4s;
+  }
+  .doorway {
+    position: absolute; inset: 0; border-radius: 80px 80px 0 0; opacity: 0; transition: opacity 0.4s;
+    background: radial-gradient(circle at 50% 62%, var(--glow), var(--bright) 30%, var(--mid) 65%, var(--violet));
+  }
+  .leaf {
+    position: absolute; inset: 0; border-radius: 80px 80px 0 0;
+    background: linear-gradient(180deg, #2a2731, #1d1b22); background-size: cover; background-position: center;
+    border: 2px solid var(--accent); transform-origin: left center; backface-visibility: hidden;
+    transition: transform 0.75s cubic-bezier(0.3, 0.7, 0.2, 1), border-color 0.4s;
+  }
+  .plaque {
+    position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
+    min-width: 58px; padding: 2px 12px; text-align: center; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--accent);
+    font: 600 24px/1.3 var(--heading); color: var(--quiet); letter-spacing: 0.03em;
+    transition: color 0.4s, background 0.4s, border-color 0.4s, text-shadow 0.4s;
+  }
+  .panel { position: absolute; left: 28px; right: 28px; border: 2px solid #2f2b37; border-radius: 6px; }
+  .panel.upper { top: 108px; height: 52px; }
+  .panel.lower { top: 172px; height: 66px; }
+  .keyhole { position: absolute; right: 10px; top: 150px; width: 12px; height: 22px; }
+  .keyhole::before, .keyhole::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); background: #0c0b0f; transition: background 0.4s, box-shadow 0.4s; }
+  .keyhole::before { top: 0; width: 10px; height: 10px; border-radius: 50%; }
+  .keyhole::after { top: 7px; width: 5px; height: 12px; border-radius: 0 0 2px 2px; }
+
+  /* Custom door art replaces the drawn details. */
+  .door.art .plaque, .door.art .panel, .door.art .keyhole { display: none; }
+
+  /* Open: you hold the right key, so the door breathes. */
+  .door.open .frame { border-color: var(--mid); }
+  .door.open .leaf { border-color: var(--bright); }
+  .door.open .plaque { color: var(--glow); border-color: var(--mid); text-shadow: 0 0 10px rgba(200, 184, 255, 0.8); }
+  .door.open .keyhole::before, .door.open .keyhole::after { background: var(--glow); box-shadow: 0 0 8px var(--glow); }
+  .door.open { animation: breathe 3.2s ease-in-out infinite; }
+  @keyframes breathe {
+    0%, 100% { filter: drop-shadow(0 0 4px rgba(154, 127, 224, 0.3)); }
+    50% { filter: drop-shadow(0 0 18px rgba(200, 184, 255, 0.65)); }
+  }
+  .door.open:hover, .door.open:focus-visible { filter: drop-shadow(0 0 22px rgba(200, 184, 255, 0.85)); animation: none; }
+
+  /* Done: beaten, steady lit trim. */
+  .door.done .frame { border-color: var(--bright); }
+  .door.done .leaf { border-color: var(--mid); }
+  .door.done .plaque { background: var(--bright); border-color: var(--bright); color: var(--bg); }
+  .door.done { filter: drop-shadow(0 0 8px rgba(154, 127, 224, 0.45)); }
+
+  /* Locked: quiet, and it rattles when tried. */
+  .door.locked .leaf { filter: brightness(0.85); }
+  .door.rattle { animation: rattle 0.45s ease-out; }
+  @keyframes rattle {
+    0%, 100% { transform: translateX(0); }
+    15% { transform: translateX(-4px) rotate(-1deg); }
+    30% { transform: translateX(4px) rotate(1deg); }
+    45% { transform: translateX(-3px) rotate(-0.5deg); }
+    60% { transform: translateX(3px); }
+    80% { transform: translateX(-1px); }
+  }
+
+  .door.opening .leaf { transform: rotateY(-80deg); }
+  .door.opening .doorway { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="door" id="door" role="button" tabindex="0" aria-label="Door">
+    <div class="doorway"></div>
+    <div class="leaf" id="leaf">
+      <div class="plaque" id="plaque"></div>
+      <div class="panel upper"></div>
+      <div class="panel lower"></div>
+      <div class="keyhole"></div>
+    </div>
+    <div class="frame"></div>
+    <div class="floor"></div>
+  </div>
+</div>
+
+<script>
+/* lib/keys.js */
+// Facts about the 12 keys, shared by the embed boxes.
+const KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'];
+
+const KEY_INFO = {
+  C:    { label: 'C',  minor: 'Am',  signature: 'No sharps or flats', level: 'Tutorial',           semitones: 0 },
+  G:    { label: 'G',  minor: 'Em',  signature: '1 sharp',            level: 'Wrong Note',         semitones: 7 },
+  D:    { label: 'D',  minor: 'Bm',  signature: '2 sharps',           level: 'Key Signature Lock', semitones: 2 },
+  A:    { label: 'A',  minor: 'F♯m', signature: '3 sharps',           level: 'Feedback',           semitones: 9 },
+  E:    { label: 'E',  minor: 'C♯m', signature: '4 sharps',           level: 'Melody Memory',      semitones: 4 },
+  B:    { label: 'B',  minor: 'G♯m', signature: '5 sharps',           level: 'Fix the Mix',        semitones: 11 },
+  'F#': { label: 'F♯', minor: 'D♯m', signature: '6 sharps (or 6 flats as G♭)', level: 'The Tritone', semitones: 6, alt: 'G♭' },
+  Db:   { label: 'D♭', minor: 'B♭m', signature: '5 flats',            level: 'Chord Progression',  semitones: 1 },
+  Ab:   { label: 'A♭', minor: 'Fm',  signature: '4 flats',            level: 'Survival Waves',     semitones: 8 },
+  Eb:   { label: 'E♭', minor: 'Cm',  signature: '3 flats',            level: 'Beat Rebuild',       semitones: 3 },
+  Bb:   { label: 'B♭', minor: 'Gm',  signature: '2 flats',            level: 'Arpeggio Maze',      semitones: 10 },
+  F:    { label: 'F',  minor: 'Dm',  signature: '1 flat',             level: 'Final Boss',         semitones: 5 },
+};
+
+const keyLabel = (key) => KEY_INFO[key].label;
+
+// Root note of a key as a MIDI number, kept between F#3 and F#4.
+function rootMidi(key) {
+  const s = KEY_INFO[key].semitones;
+  return 60 + (s > 6 ? s - 12 : s);
+}
+</script>
+<script>
+/* lib/bridge.js */
+// Talks to the Wix page code around this embed box.
+// Keeps saying "ready" until the page answers, in case the page code
+// starts listening after the box loads.
+const Bridge = (() => {
+  const handlers = {};
+  const standalone = window.parent === window;
+  let answered = false;
+
+  window.addEventListener('message', (event) => {
+    const message = event.data;
+    if (!message || typeof message.type !== 'string' || message.type === 'ready') return;
+    answered = true;
+    if (handlers[message.type]) handlers[message.type](message);
+  });
+
+  function send(message) {
+    if (!standalone) window.parent.postMessage(message, '*');
+  }
+
+  function start() {
+    if (standalone) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (answered || ++tries > 40) clearInterval(timer);
+      else send({ type: 'ready' });
+    }, 400);
+    send({ type: 'ready' });
+  }
+
+  return { on: (type, fn) => { handlers[type] = fn; }, send, start, standalone };
+})();
+</script>
+<script>
+/* lib/sound.js */
+// Sound engine. Plays your samples when SAMPLES lists them, otherwise a soft
+// built-in synth. Samples only need one note every few semitones: the nearest
+// one is pitched to fill the gaps.
+const Sound = (() => {
+  // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
+  const SAMPLES = {};
+
+  let ctx = null;
+  let out = null;
+  const buffers = {};
+
+  function audio() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      out = ctx.createDynamicsCompressor();
+      out.connect(ctx.destination);
+      loadSamples();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  async function loadSamples() {
+    for (const [midi, url] of Object.entries(SAMPLES)) {
+      try {
+        const data = await (await fetch(url)).arrayBuffer();
+        buffers[midi] = await ctx.decodeAudioData(data);
+      } catch (err) {
+        // A missing sample falls back to the synth.
+      }
+    }
+  }
+
+  function nearestSample(midi) {
+    let best = null;
+    for (const m of Object.keys(buffers).map(Number)) {
+      if (best === null || Math.abs(m - midi) < Math.abs(best - midi)) best = m;
+    }
+    return best;
+  }
+
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  // One note. `when` is seconds from now.
+  function note(midi, when = 0, length = 1.2, volume = 0.4) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const gain = a.createGain();
+    gain.connect(out);
+
+    const sample = nearestSample(midi);
+    if (sample !== null) {
+      const src = a.createBufferSource();
+      src.buffer = buffers[sample];
+      src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
+      gain.gain.setValueAtTime(volume, t);
+      gain.gain.setTargetAtTime(0, t + length, 0.15);
+      src.connect(gain);
+      src.start(t);
+      src.stop(t + length + 1);
+      return;
+    }
+
+    const filter = a.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2600;
+    filter.connect(gain);
+    for (const detune of [-7, 7]) {
+      const osc = a.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = hz(midi);
+      osc.detune.value = detune;
+      osc.connect(filter);
+      osc.start(t);
+      osc.stop(t + length + 0.6);
+    }
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume * 0.5, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(volume * 0.25, t + 0.3);
+    gain.gain.setTargetAtTime(0.0001, t + length, 0.2);
+  }
+
+  function chord(midis, when = 0, length = 1.2, volume = 0.4) {
+    midis.forEach((m) => note(m, when, length, volume / Math.sqrt(midis.length)));
+  }
+
+  // Filtered noise, for thuds and whooshes.
+  function noise(when, length, from, to, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const buffer = a.createBuffer(1, Math.ceil(a.sampleRate * length), a.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource();
+    const filter = a.createBiquadFilter();
+    const gain = a.createGain();
+    src.buffer = buffer;
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(from, t);
+    filter.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    src.connect(filter).connect(gain).connect(out);
+    src.start(t);
+  }
+
+  function thump(when, from, to, length, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + length + 0.05);
+  }
+
+  return {
+    unlock: audio,
+    note,
+    chord,
+    // Locked door: two dull knocks.
+    locked() {
+      thump(0, 120, 55, 0.18, 0.5);
+      noise(0, 0.08, 900, 200, 0.25);
+      thump(0.11, 110, 50, 0.16, 0.35);
+    },
+    // Door swinging open.
+    whoosh() {
+      noise(0, 0.6, 300, 2400, 0.12);
+    },
+    // A key going into the circle: its perfect fifth, then its major triad.
+    insert(root) {
+      chord([root, root + 7], 0, 0.9, 0.5);
+      chord([root, root + 4, root + 7, root + 12], 0.55, 2.4, 0.55);
+    },
+    // Clicking a lit key once the circle is complete.
+    fifth(root) {
+      chord([root, root + 7], 0, 1.1, 0.45);
+    },
+    // Finding a key at the end of a level: a rising arpeggio.
+    keyFound(root) {
+      [0, 4, 7, 12, 16].forEach((step, i) => note(root + step, i * 0.12, 1.4, 0.35));
+    },
+  };
+})();
+</script>
+<script>
+  // Your door art: PNG links for each look. Leave empty to use the drawn door.
+  const DOOR_ART = { locked: '', open: '', done: '' };
+
+  const door = document.getElementById('door');
+  const leaf = document.getElementById('leaf');
+  let state = null;
+  let opening = false;
+
+  function render() {
+    door.className = 'door ' + state + (DOOR_ART[state] ? ' art' : '');
+    leaf.style.backgroundImage = DOOR_ART[state] ? `url("${DOOR_ART[state]}")` : '';
+    door.setAttribute('aria-label', state === 'locked' ? 'Locked door' : `Door in ${keyLabel(key)}`);
+  }
+
+  let key = null;
+  Bridge.on('door', (message) => {
+    key = message.key;
+    state = message.state;
+    opening = false;
+    document.getElementById('plaque').textContent = keyLabel(key);
+    render();
+  });
+
+  function tryDoor() {
+    if (!state || opening) return;
+    Sound.unlock();
+    if (state === 'locked') {
+      door.classList.remove('rattle');
+      void door.offsetWidth; // restart the animation
+      door.classList.add('rattle');
+      Sound.locked();
+      return;
+    }
+    opening = true;
+    door.classList.add('opening');
+    Sound.whoosh();
+    setTimeout(() => Bridge.send({ type: 'enter' }), 750);
+    // If the page didn't move on (e.g. it said no), close the door again.
+    setTimeout(() => { if (opening) { opening = false; render(); } }, 4000);
+  }
+
+  door.addEventListener('click', tryDoor);
+  door.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tryDoor(); }
+  });
+
+  Bridge.start();
+</script>
+</body>
+</html>

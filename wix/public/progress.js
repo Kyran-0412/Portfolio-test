@@ -8,6 +8,14 @@ export const KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb',
 // Name used in the visitor's browser storage.
 export const STORAGE_KEY = 'cof-progress';
 
+// Page addresses. These must match the URL slugs set in Wix.
+export const CIRCLE_PATH = '/circle-of-fifths';
+export const LEVEL_PATHS = {
+  C: '/level-c', G: '/level-g', D: '/level-d', A: '/level-a', E: '/level-e', B: '/level-b',
+  'F#': '/level-fsharp', Db: '/level-dflat', Ab: '/level-aflat', Eb: '/level-eflat',
+  Bb: '/level-bflat', F: '/level-f',
+};
+
 // held:   keys won from a level but not yet placed in the circle
 // placed: keys placed in the circle, always in circle order
 export function emptyProgress() {
@@ -24,6 +32,12 @@ export function nextKey(progress) {
 export function isDoorOpen(progress, key) {
   const index = KEYS.indexOf(key);
   return index !== -1 && index <= progress.placed.length;
+}
+
+// How a door looks: 'locked', 'open' (its level is playable) or 'done' (beaten).
+export function doorState(progress, key) {
+  if (progress.placed.includes(key) || progress.held.includes(key)) return 'done';
+  return isDoorOpen(progress, key) ? 'open' : 'locked';
 }
 
 export function isCircleComplete(progress) {

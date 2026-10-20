@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Simulator</title>
+<style>
+  body { margin: 0; background: #181818; color: #E6E1EC; font: 14px Inter, system-ui, sans-serif; }
+  header { padding: 12px 16px; background: linear-gradient(90deg, #322D5A, #473369); display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  header strong { font: 600 20px Oswald, sans-serif; margin-right: 12px; }
+  header a { color: #C8B8FF; text-decoration: none; font-size: 13px; }
+  header a.here { color: #fff; text-decoration: underline; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font: 600 30px Oswald, sans-serif; }
+  .filler { height: 120px; border: 1px dashed #2c2a33; border-radius: 8px; display: grid; place-items: center; color: #6d6774; margin-bottom: 24px; }
+  iframe { display: block; margin: 0 auto 16px; border: 0; }
+  .doors { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+  #keyIcon { position: fixed; right: 20px; bottom: 20px; width: 56px; height: 56px; }
+</style>
+<!-- Point Wix's module names at local files, so the page code runs unchanged. -->
+<script type="importmap">
+{ "imports": {
+  "wix-storage-frontend": "./shims/wix-storage-frontend.js",
+  "wix-location-frontend": "./shims/wix-location-frontend.js",
+  "public/progress.js": "../wix/public/progress.js",
+  "public/game-site.js": "../wix/public/game-site.js"
+} }
+</script>
+<script src="./shims/velo.js"></script>
+</head>
+<body>
+<header id="menu"><strong>KYRAN KELLY</strong></header>
+<main id="main"></main>
+<img id="keyIcon" src="../assets/key-icon.svg" alt="" hidden>
+<script type="module">
+  const DOOR = ['door.html', 240, 340];
+  const PAGES = {
+    home: 'Home', 'production-logs': 'Production Logs', 'musical-elements': 'Musical Elements',
+    'health-and-safety': 'Health and Safety', 'job-roles-in-music': 'Job Roles in Music',
+    'mixing-desk-operation': 'Mixing Desk Operation', 'live-production': 'Live Production',
+    'music-production': 'Music Production', performance: 'Performance', djing: 'DJing',
+    'circle-of-fifths': 'Circle of Fifths',
+  };
+  const LEVELS = ['c', 'g', 'd', 'a', 'e', 'b', 'fsharp', 'dflat', 'aflat', 'eflat', 'bflat', 'f'];
+  const page = new URLSearchParams(location.search).get('page') || 'home';
+
+  for (const [slug, title] of Object.entries(PAGES)) {
+    const a = document.createElement('a');
+    a.href = `?page=${slug}`;
+    a.textContent = title;
+    if (slug === page) a.className = 'here';
+    document.getElementById('menu').append(a);
+  }
+
+  const main = document.getElementById('main');
+  const frame = (id, [src, w, h], parent = main) => {
+    const f = document.createElement('iframe');
+    Object.assign(f, { id, src: `../wix/embeds/${src}`, width: w, height: h });
+    parent.append(f);
+  };
+
+  if (LEVELS.includes(page.replace('level-', '')) && page.startsWith('level-')) {
+    frame('gameEmbed', ['level-placeholder.html', 900, 560]);
+  } else if (page === 'circle-of-fifths') {
+    main.insertAdjacentHTML('beforeend', '<h1>Circle of Fifths</h1><div class="filler">Your explanation of the circle of fifths</div>');
+    frame('circle', ['circle.html', 700, 800]);
+    const doors = document.createElement('div');
+    doors.className = 'doors';
+    main.append(doors);
+    frame('doorBb', DOOR, doors);
+    frame('doorF', DOOR, doors);
+  } else {
+    main.insertAdjacentHTML('beforeend', `<h1>${PAGES[page] || page}</h1><div class="filler">Page content</div><div class="filler">More content</div>`);
+    frame('door', DOOR);
+  }
+
+  await import('../wix/masterPage.js');
+  await import(`../wix/pages/${page}.js`);
+</script>
+</body>
+</html>
