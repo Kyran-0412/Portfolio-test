@@ -5,6 +5,6 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/build.mjs",
-    "test:browser": "node scripts/build.mjs && node tests/phase1.e2e.mjs && node tests/phase2.e2e.mjs && node tests/phase3.e2e.mjs && node tests/level-g.e2e.mjs && node tests/level-d.e2e.mjs && node tests/level-a.e2e.mjs && node tests/level-e.e2e.mjs && node tests/level-b.e2e.mjs && node tests/level-fsharp.e2e.mjs && node tests/level-dflat.e2e.mjs && node tests/midi.e2e.mjs"
+    "test:browser": "node scripts/build.mjs && node tests/phase1.e2e.mjs && node tests/phase2.e2e.mjs && node tests/phase3.e2e.mjs && node tests/level-g.e2e.mjs && node tests/level-d.e2e.mjs && node tests/level-a.e2e.mjs && node tests/level-e.e2e.mjs && node tests/level-b.e2e.mjs && node tests/level-fsharp.e2e.mjs && node tests/level-dflat.e2e.mjs && node tests/level-aflat.e2e.mjs && node tests/midi.e2e.mjs"
   }
 }

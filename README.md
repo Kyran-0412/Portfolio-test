@@ -23,10 +23,22 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-b.html` | Level 6, Fix the Mix | Level B page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-fsharp.html` | Level 7, The Tritone (boss fight) | Level F♯ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-dflat.html` | Level 8, Chord Progression | Level D♭ page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-aflat.html` | Level 9, Survival Waves (zombies) | Level A♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 9: Survival Waves
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-aflat.html` | Level A♭ page's Embed HTML box (replaces the placeholder) |
+
+Pick a weapon (Arpeggiator, Sub Bass or Mic Swing), then survive 5 waves. WASD to move, aim with the
+mouse, left click (or hold) to attack. Pick an upgrade between waves; if you're overrun, retry the wave.
 
 ## Level 8: Chord Progression
 

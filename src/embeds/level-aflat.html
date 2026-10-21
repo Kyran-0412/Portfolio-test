@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 9: Survival Waves</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 8px; }
+  .arena { position: relative; width: 900px; max-width: 100%; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; cursor: none; }
+  .overlay {
+    position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(18, 17, 22, 0.96); border-radius: 10px; text-align: center; padding: 16px;
+  }
+  .overlay.show { display: flex; animation: fade-in 0.3s ease-out both; }
+  .overlay h2 { margin: 0; font: 600 34px var(--heading); letter-spacing: 0.02em; }
+  .choices { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .choice {
+    width: 220px; padding: 16px 14px; border-radius: 12px; cursor: pointer; text-align: left;
+    background: linear-gradient(#2c2735, #211e28); border: 1px solid var(--mid); color: var(--text);
+    display: flex; flex-direction: column; gap: 6px; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  }
+  .choice:hover, .choice:focus-visible { transform: translateY(-3px); border-color: var(--glow); box-shadow: 0 0 18px rgba(200, 184, 255, 0.45); outline: none; }
+  .choice .icon { font-size: 26px; }
+  .choice strong { font: 600 19px var(--heading); letter-spacing: 0.03em; }
+  .choice span { font-size: 13px; color: var(--quiet); line-height: 1.4; }
+  .choice em { font: 500 11px var(--heading); letter-spacing: 0.14em; text-transform: uppercase; color: var(--bright); font-style: normal; }
+  .controls-help { font-size: 13px; color: var(--quiet); }
+  .controls-help kbd { font: 600 12px var(--heading); color: var(--glow); background: var(--panel); border: 1px solid var(--mid); border-radius: 5px; padding: 1px 6px; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 9, key of A♭: Survival Waves. A top-down zombie rush. Pick a
+  // musical weapon, survive 5 waves from 4 speaker-stack spawners, and pick an
+  // upgrade between waves. Every shot and kill plays notes in A♭ major.
+  // WASD to move, aim with the mouse, left click (or hold) to attack.
+  const W = 900, H = 540;
+  const AB_ARP = [56, 60, 63, 68, 72, 75];           // A♭ major arpeggio, rising
+  const AB_PENTA = [68, 70, 72, 75, 77, 80];         // A♭ major pentatonic for kills
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  const WEAPONS = {
+    arp: { name: 'Arpeggiator', icon: '♪♫', tag: 'Rapid fire',
+      desc: 'Fast little notes that ripple up the A♭ arpeggio. Low damage, very quick.',
+      rate: 0.13, damage: 1, speed: 640, size: 5, pierce: 0 },
+    bass: { name: 'Sub Bass', icon: '〰', tag: 'Heavy, piercing',
+      desc: 'A slow, wide wave of bass that rolls through every zombie in its path.',
+      rate: 0.8, damage: 4, speed: 300, size: 24, pierce: 99 },
+    mic: { name: 'Mic Swing', icon: '🎤', tag: 'Melee',
+      desc: 'Swing your mic on its cable in a wide arc. Big damage and knockback, short reach.',
+      rate: 0.42, damage: 5, reach: 80, arc: 1.7 },
+  };
+
+  const ZOMBIES = {
+    walker: { hp: 3, speed: 52, size: 14, damage: 10, body: '#7d7a8c', eye: '#ff8fa6' },
+    brute: { hp: 14, speed: 36, size: 23, damage: 22, body: '#4a3566', eye: '#ff5d7a' },
+    spitter: { hp: 5, speed: 48, size: 14, damage: 10, body: '#3f7a6e', eye: '#b9fff0', range: 230, fire: 2.4 },
+    runner: { hp: 2, speed: 120, size: 11, damage: 8, body: '#a8566a', eye: '#ffe0e6' },
+  };
+
+  const WAVES = [
+    { walker: 8, gap: 1.1 },
+    { walker: 12, brute: 2, gap: 0.95 },
+    { walker: 12, brute: 3, spitter: 3, gap: 0.85 },
+    { walker: 14, brute: 3, spitter: 4, runner: 5, gap: 0.75 },
+    { walker: 16, brute: 5, spitter: 5, runner: 8, gap: 0.6 },
+  ];
+  const SPAWNERS = [[60, 92], [W - 60, 92], [60, H - 58], [W - 60, H - 58]]; // clear of the HUD at the top
+
+  // Upgrades offered between waves (three at random). Some only suit one weapon.
+  const UPGRADES = [
+    { id: 'damage', name: 'Louder', desc: '+30% damage', apply: (s) => { s.mods.damage *= 1.3; } },
+    { id: 'rate', name: 'Faster Tempo', desc: '+20% attack speed', apply: (s) => { s.mods.rate *= 0.8; } },
+    { id: 'speed', name: 'Light Feet', desc: '+15% move speed', apply: (s) => { s.player.speed *= 1.15; } },
+    { id: 'maxhp', name: 'Bigger Headroom', desc: '+25 max health, and heal 25', apply: (s) => { s.player.maxHp += 25; s.player.hp = Math.min(s.player.maxHp, s.player.hp + 25); } },
+    { id: 'heal', name: 'Encore', desc: 'Heal to full health', apply: (s) => { s.player.hp = s.player.maxHp; } },
+    { id: 'regen', name: 'Sustain', desc: 'Regain 2 health every second', apply: (s) => { s.player.regen += 2; } },
+    { id: 'extra', name: 'Harmony', desc: 'Fire one more note each shot', only: 'arp', apply: (s) => { s.mods.extra += 1; } },
+    { id: 'pierce', name: 'Ring Out', desc: 'Notes pass through one more zombie', only: 'arp', apply: (s) => { s.mods.pierce += 1; } },
+    { id: 'wide', name: 'Wider Wave', desc: '+40% wave size', only: 'bass', apply: (s) => { s.mods.size *= 1.4; } },
+    { id: 'reach', name: 'Longer Cable', desc: '+30% swing reach', only: 'mic', apply: (s) => { s.mods.reach *= 1.3; } },
+  ];
+
+  let canvas, ctx, ui = {};
+  let S = null;
+  let keys = {};
+  let mouse = { x: W / 2, y: H / 2 - 80, down: false };
+  let last = 0, paused = false;
+
+  Level.setup({
+    description: 'They’re coming out of the speakers. Pick a weapon and survive five waves.',
+    piano: false,
+    start(stage) {
+      stage.innerHTML = `
+        <div class="arena">
+          <canvas id="arena" width="${W}" height="${H}"></canvas>
+          <div class="overlay show" id="choose">
+            <h2>Pick your weapon</h2>
+            <div class="choices" id="weapons"></div>
+            <p class="controls-help"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move · aim with the mouse · left click (or hold) to attack</p>
+          </div>
+          <div class="overlay" id="upgrade">
+            <h2 id="upgradeTitle"></h2>
+            <p class="controls-help">Pick an upgrade for the next wave.</p>
+            <div class="choices" id="upgrades"></div>
+          </div>
+          <div class="overlay" id="endCard">
+            <h2 id="endTitle"></h2>
+            <p id="endText"></p>
+            <div class="buttons" id="endButtons"></div>
+          </div>
+        </div>`;
+      canvas = stage.querySelector('#arena');
+      ctx = canvas.getContext('2d');
+      ui = {
+        choose: stage.querySelector('#choose'), weapons: stage.querySelector('#weapons'),
+        upgrade: stage.querySelector('#upgrade'), upgradeTitle: stage.querySelector('#upgradeTitle'), upgrades: stage.querySelector('#upgrades'),
+        end: stage.querySelector('#endCard'), endTitle: stage.querySelector('#endTitle'), endText: stage.querySelector('#endText'), endButtons: stage.querySelector('#endButtons'),
+      };
+      for (const [id, w] of Object.entries(WEAPONS)) {
+        ui.weapons.appendChild(choiceCard(w.icon, w.name, w.desc, w.tag, () => chooseWeapon(id), `weapon-${id}`));
+      }
+      // Mouse aim, in canvas coordinates
+      const toCanvas = (e) => {
+        const r = canvas.getBoundingClientRect();
+        mouse.x = (e.clientX - r.left) * (W / r.width);
+        mouse.y = (e.clientY - r.top) * (H / r.height);
+      };
+      canvas.addEventListener('pointermove', toCanvas);
+      canvas.addEventListener('pointerdown', (e) => { toCanvas(e); if (e.button === 0) { mouse.down = true; Sound.unlock(); } });
+      window.addEventListener('pointerup', () => { mouse.down = false; });
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+      newState();
+      requestAnimationFrame(loop);
+    },
+  });
+
+  function choiceCard(icon, name, desc, tag, onPick, id) {
+    const b = document.createElement('button');
+    b.className = 'choice';
+    if (id) b.id = id;
+    b.innerHTML = `<span class="icon">${icon}</span><strong>${name}</strong><span>${desc}</span>${tag ? `<em>${tag}</em>` : ''}`;
+    b.onclick = () => { b.blur(); onPick(); };
+    return b;
+  }
+
+  // ---------- State ----------
+  function newState() {
+    S = {
+      mode: 'choose', weapon: null, wave: 0, time: 0,
+      player: { x: W / 2, y: H / 2, hp: 100, maxHp: 100, speed: 200, regen: 0, aim: -Math.PI / 2 },
+      mods: { damage: 1, rate: 1, extra: 0, pierce: 0, size: 1, reach: 1 },
+      zombies: [], shots: [], spits: [], sparks: [], texts: [], swings: [],
+      queue: [], spawnIn: 0, fireCool: 0, note: 0, shake: 0, hurtFlash: 0, banner: null, spawnerGlow: [0, 0, 0, 0],
+      waveStart: null, // upgrades and health at the start of the wave, for retries
+    };
+    window.__zombie = S; // for automatic tests
+  }
+
+  function chooseWeapon(id) {
+    S.weapon = id;
+    ui.choose.classList.remove('show');
+    Sound.unlock();
+    startWave(0);
+  }
+
+  function startWave(index) {
+    S.wave = index;
+    S.mode = 'fight';
+    const w = WAVES[index];
+    S.queue = [];
+    for (const type of Object.keys(ZOMBIES)) for (let i = 0; i < (w[type] || 0); i++) S.queue.push(type);
+    S.queue.sort(() => Math.random() - 0.5); // a random mix
+    S.spawnIn = 1.5;
+    S.zombies = []; S.spits = []; S.shots = [];
+    S.banner = { text: `WAVE ${index + 1}${index === WAVES.length - 1 ? ' · FINAL WAVE' : ''}`, t: 2 };
+    S.waveStart = { hp: S.player.hp, maxHp: S.player.maxHp, speed: S.player.speed, regen: S.player.regen, mods: { ...S.mods } };
+    S.texts = S.texts.filter((t) => !t.big); // only one "New: …" label at a time
+    const newType = { 1: 'Brutes', 2: 'Spitters', 3: 'Runners' }[index];
+    if (newType) S.texts.push({ x: W / 2, y: H * 0.3 + 34, text: `New: ${newType}`, t: 2.2, big: true });
+  }
+
+  // ---------- Input ----------
+  window.addEventListener('keydown', (e) => { keys[e.code] = true; });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+  window.addEventListener('blur', () => { paused = true; keys = {}; mouse.down = false; });
+  window.addEventListener('focus', () => { paused = false; last = performance.now(); });
+
+  // ---------- Attacks ----------
+  function attack() {
+    const p = S.player, w = WEAPONS[S.weapon], m = S.mods;
+    S.fireCool = w.rate * m.rate;
+    const a = p.aim;
+    if (S.weapon === 'mic') {
+      S.swings.push({ a, t: 0.16 });
+      const reach = w.reach * m.reach;
+      let hit = false;
+      for (const z of S.zombies) {
+        const d = Math.hypot(z.x - p.x, z.y - p.y);
+        let diff = Math.atan2(z.y - p.y, z.x - p.x) - a;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        if (d < reach + z.size && Math.abs(diff) < w.arc / 2) {
+          hurtZombie(z, w.damage * m.damage);
+          z.x += Math.cos(a) * 34; z.y += Math.sin(a) * 34; // knockback
+          hit = true;
+        }
+      }
+      Sound.whoosh();
+      if (hit) Sound.hit();
+      return;
+    }
+    const count = S.weapon === 'arp' ? 1 + m.extra : 1;
+    for (let i = 0; i < count; i++) {
+      const spread = (i - (count - 1) / 2) * 0.14;
+      S.shots.push({
+        x: p.x + Math.cos(a) * 18, y: p.y + Math.sin(a) * 18, a: a + spread,
+        speed: w.speed, size: w.size * (S.weapon === 'bass' ? m.size : 1), damage: w.damage * m.damage,
+        pierce: w.pierce + m.pierce, hits: new Set(), kind: S.weapon, life: S.weapon === 'bass' ? 1.4 : 1.2,
+      });
+    }
+    if (S.weapon === 'arp') Sound.note(AB_ARP[S.note++ % AB_ARP.length] + 12, 0, 0.18, 0.18);
+    else Sound.chord([44 - 12, 44 - 5], 0, 0.45, 0.45); // a low A♭ fifth
+  }
+
+  function hurtZombie(z, amount) {
+    z.hp -= amount;
+    z.flash = 0.1;
+    if (z.hp <= 0 && !z.dead) {
+      z.dead = true;
+      for (let i = 0; i < 12; i++) spark(z.x, z.y, ZOMBIES[z.type].body);
+      Sound.note(pick(AB_PENTA), 0, 0.3, 0.16);
+    }
+  }
+
+  function hurtPlayer(amount) {
+    const p = S.player;
+    p.hp = Math.max(0, p.hp - amount);
+    S.hurtFlash = 0.35;
+    S.shake = 0.25;
+    Sound.squeal();
+    if (p.hp <= 0) overrun();
+  }
+
+  function spark(x, y, color) {
+    const a = rand(0, Math.PI * 2), v = rand(50, 200);
+    S.sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.25, 0.6), color });
+  }
+
+  // ---------- Between waves ----------
+  function waveCleared() {
+    S.spits = []; S.hurtFlash = 0; S.shake = 0; // nothing left frozen behind the menu
+    if (S.wave === WAVES.length - 1) return win();
+    S.mode = 'upgrade';
+    mouse.down = false;
+    Sound.chord([56, 60, 63, 68], 0, 1.4, 0.4);
+    ui.upgradeTitle.textContent = `Wave ${S.wave + 1} cleared`;
+    ui.upgrades.innerHTML = '';
+    const options = UPGRADES.filter((u) => !u.only || u.only === S.weapon).sort(() => Math.random() - 0.5).slice(0, 3);
+    for (const u of options) {
+      ui.upgrades.appendChild(choiceCard('⬆', u.name, u.desc, '', () => {
+        u.apply(S);
+        ui.upgrade.classList.remove('show');
+        startWave(S.wave + 1);
+      }, `upgrade-${u.id}`));
+    }
+    ui.upgrade.classList.add('show');
+  }
+
+  // Overrun: retry the same wave at full health, keeping your upgrades.
+  function overrun() {
+    S.mode = 'over';
+    mouse.down = false;
+    ui.endTitle.textContent = 'Overrun';
+    ui.endText.textContent = `The horde got you on wave ${S.wave + 1}. Try the wave again: you keep your upgrades.`;
+    ui.endButtons.innerHTML = '';
+    const b = document.createElement('button');
+    b.className = 'primary';
+    b.textContent = 'Retry wave';
+    b.onclick = () => {
+      b.blur();
+      const start = S.waveStart;
+      Object.assign(S.player, { hp: start.maxHp, maxHp: start.maxHp, speed: start.speed, regen: start.regen, x: W / 2, y: H / 2 });
+      S.mods = { ...start.mods };
+      ui.end.classList.remove('show');
+      startWave(S.wave);
+    };
+    ui.endButtons.append(b);
+    ui.end.classList.add('show');
+  }
+
+  function win() {
+    S.mode = 'won';
+    mouse.down = false;
+    Sound.chord([44, 56, 60, 63, 68], 0, 2.4, 0.55);
+    ui.endTitle.textContent = 'Survived';
+    ui.endText.textContent = 'Five waves, and the speakers have finally gone quiet.';
+    ui.endButtons.innerHTML = '';
+    ui.end.classList.add('show');
+    setTimeout(() => Level.win(), 2200);
+  }
+
+  // ---------- Game loop ----------
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - (last || now)) / 1000);
+    last = now;
+    if (S && S.mode === 'fight' && !paused) update(dt);
+    if (S) draw();
+  }
+
+  function update(dt) {
+    const p = S.player;
+    S.time += dt;
+
+    // Movement (WASD), kept inside the arena
+    let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), my = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0);
+    if (mx && my) { mx *= Math.SQRT1_2; my *= Math.SQRT1_2; }
+    p.x = Math.min(W - 16, Math.max(16, p.x + mx * p.speed * dt));
+    p.y = Math.min(H - 16, Math.max(16, p.y + my * p.speed * dt));
+    p.aim = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+    p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
+
+    S.fireCool = Math.max(0, S.fireCool - dt);
+    if (mouse.down && S.fireCool <= 0) attack();
+
+    // Spawning
+    S.spawnIn -= dt;
+    if (S.queue.length && S.spawnIn <= 0) {
+      const type = S.queue.shift();
+      const i = Math.floor(Math.random() * SPAWNERS.length);
+      const [sx, sy] = SPAWNERS[i];
+      const z = ZOMBIES[type];
+      S.zombies.push({ type, x: sx + rand(-10, 10), y: sy + rand(-10, 10), hp: z.hp, maxHp: z.hp, size: z.size, attackCool: 0, fireIn: rand(1, z.fire || 1), flash: 0, wobble: rand(0, 6) });
+      S.spawnerGlow[i] = 0.5;
+      S.spawnIn = WAVES[S.wave].gap * rand(0.7, 1.3);
+    }
+    S.spawnerGlow = S.spawnerGlow.map((g) => Math.max(0, g - dt));
+
+    // Zombies: walk at you (spitters keep their distance), push apart a little
+    for (const z of S.zombies) {
+      const t = ZOMBIES[z.type];
+      const dx = p.x - z.x, dy = p.y - z.y, d = Math.hypot(dx, dy) || 1;
+      let dir = 1;
+      if (t.range) dir = d < t.range - 30 ? -0.6 : d > t.range + 20 ? 1 : 0;
+      z.x += (dx / d) * t.speed * dir * dt;
+      z.y += (dy / d) * t.speed * dir * dt;
+      for (const o of S.zombies) {
+        if (o === z) continue;
+        const ox = z.x - o.x, oy = z.y - o.y, od = Math.hypot(ox, oy);
+        const min = z.size + o.size;
+        if (od > 0 && od < min) { z.x += (ox / od) * (min - od) * 0.5; z.y += (oy / od) * (min - od) * 0.5; }
+      }
+      z.x = Math.min(W - 10, Math.max(10, z.x));
+      z.y = Math.min(H - 10, Math.max(10, z.y));
+      z.attackCool = Math.max(0, z.attackCool - dt);
+      z.flash = Math.max(0, z.flash - dt);
+      if (d < z.size + 14 && z.attackCool <= 0) { z.attackCool = 0.8; hurtPlayer(t.damage); if (S.mode !== 'fight') return; }
+      if (t.fire) {
+        z.fireIn -= dt;
+        if (z.fireIn <= 0 && d < t.range + 80) {
+          z.fireIn = t.fire * rand(0.85, 1.15);
+          S.spits.push({ x: z.x, y: z.y, vx: (dx / d) * 170, vy: (dy / d) * 170, life: 3 });
+          Sound.note(pick([57, 62, 67]), 0, 0.3, 0.14); // off-key notes: A, D, G aren't in A♭ major
+        }
+      }
+    }
+
+    // Your notes and waves
+    for (const s of S.shots) {
+      s.x += Math.cos(s.a) * s.speed * dt;
+      s.y += Math.sin(s.a) * s.speed * dt;
+      s.life -= dt;
+      for (const z of S.zombies) {
+        if (z.dead || s.hits.has(z) || s.gone) continue;
+        if (Math.hypot(z.x - s.x, z.y - s.y) < z.size + s.size) {
+          s.hits.add(z);
+          hurtZombie(z, s.damage);
+          if (s.hits.size > s.pierce) s.gone = true;
+        }
+      }
+    }
+    // Spitters' notes
+    for (const sp of S.spits) {
+      sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.life -= dt;
+      if (Math.hypot(sp.x - p.x, sp.y - p.y) < 18) { sp.gone = true; hurtPlayer(ZOMBIES.spitter.damage); if (S.mode !== 'fight') return; }
+    }
+
+    S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+    S.texts.forEach((t) => { t.t -= dt; if (!t.big) t.y -= 30 * dt; });
+    S.swings.forEach((w) => { w.t -= dt; });
+    S.shake = Math.max(0, S.shake - dt);
+    S.hurtFlash = Math.max(0, S.hurtFlash - dt);
+    if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
+
+    S.zombies = S.zombies.filter((z) => !z.dead);
+    S.shots = S.shots.filter((s) => !s.gone && s.life > 0 && s.x > -40 && s.x < W + 40 && s.y > -40 && s.y < H + 40);
+    S.spits = S.spits.filter((s) => !s.gone && s.life > 0);
+    S.sparks = S.sparks.filter((s) => s.t > 0);
+    S.texts = S.texts.filter((t) => t.t > 0);
+    S.swings = S.swings.filter((w) => w.t > 0);
+
+    if (!S.queue.length && !S.zombies.length) waveCleared();
+  }
+
+  // ---------- Drawing ----------
+  function draw() {
+    const p = S.player;
+    ctx.save();
+    if (S.shake > 0) ctx.translate(rand(-3, 3) * S.shake * 4, rand(-3, 3) * S.shake * 4);
+    ctx.fillStyle = '#141219'; ctx.fillRect(-10, -10, W + 20, H + 20);
+    // Floor: a dark stage grid
+    ctx.strokeStyle = 'rgba(94, 62, 132, 0.12)'; ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    const vignette = ctx.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, W * 0.6);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)'); vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
+
+    // Spawners: speaker stacks in the corners
+    SPAWNERS.forEach(([x, y], i) => {
+      const g = S.spawnerGlow[i];
+      ctx.fillStyle = '#211e28'; ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 2;
+      roundRect(x - 26, y - 30, 52, 60, 6); ctx.fill(); ctx.stroke();
+      for (const cy of [y - 13, y + 13]) {
+        ctx.fillStyle = `rgba(154, 127, 224, ${0.35 + g})`;
+        ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 6 + g * 40;
+        ctx.beginPath(); ctx.arc(x, cy, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    });
+
+    // Spitter notes
+    for (const sp of S.spits) {
+      ctx.fillStyle = '#7fe0c8'; ctx.shadowColor = '#7fe0c8'; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Zombies
+    for (const z of S.zombies) {
+      const t = ZOMBIES[z.type];
+      const bob = Math.sin(S.time * 8 + z.wobble) * 1.5;
+      ctx.fillStyle = z.flash > 0 ? '#ffffff' : t.body;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(z.x, z.y + bob, z.size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (z.type === 'brute') { // headphones on the brutes
+        ctx.strokeStyle = '#2a2236'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(z.x, z.y + bob, z.size + 2, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      }
+      // Eyes, looking at you
+      const a = Math.atan2(p.y - z.y, p.x - z.x);
+      ctx.fillStyle = t.eye; ctx.shadowColor = t.eye; ctx.shadowBlur = 6;
+      for (const side of [-1, 1]) {
+        const ex = z.x + Math.cos(a) * z.size * 0.45 + Math.cos(a + Math.PI / 2) * side * z.size * 0.35;
+        const ey = z.y + bob + Math.sin(a) * z.size * 0.45 + Math.sin(a + Math.PI / 2) * side * z.size * 0.35;
+        ctx.beginPath(); ctx.arc(ex, ey, Math.max(2, z.size * 0.16), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      if (z.hp < z.maxHp) {
+        ctx.fillStyle = '#26232d'; ctx.fillRect(z.x - z.size, z.y - z.size - 9, z.size * 2, 4);
+        ctx.fillStyle = '#ff8fa6'; ctx.fillRect(z.x - z.size, z.y - z.size - 9, z.size * 2 * (z.hp / z.maxHp), 4);
+      }
+    }
+
+    // Your notes: little notes for the arpeggiator, a wide arc for the bass
+    for (const s of S.shots) {
+      if (s.kind === 'bass') {
+        ctx.strokeStyle = 'rgba(200, 184, 255, 0.85)'; ctx.lineWidth = 5; ctx.shadowColor = '#9A7FE0'; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.arc(s.x - Math.cos(s.a) * s.size, s.y - Math.sin(s.a) * s.size, s.size * 1.4, s.a - 0.9, s.a + 0.9); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#C8B8FF'; ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+
+    // Mic swings
+    for (const w of S.swings) {
+      const reach = WEAPONS.mic.reach * S.mods.reach;
+      ctx.strokeStyle = `rgba(226, 217, 255, ${w.t / 0.16})`; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(p.x, p.y, reach, w.a - WEAPONS.mic.arc / 2, w.a + WEAPONS.mic.arc / 2); ctx.stroke();
+    }
+
+    drawPlayer(p);
+
+    for (const s of S.sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.8); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
+    for (const t of S.texts) {
+      ctx.globalAlpha = Math.min(1, t.t * 2);
+      ctx.fillStyle = '#C8B8FF'; ctx.font = t.big ? '600 20px Oswald, sans-serif' : '600 15px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    if (S.hurtFlash > 0) {
+      const k = S.hurtFlash / 0.35;
+      const rim = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.6);
+      rim.addColorStop(0, 'rgba(255, 40, 70, 0)'); rim.addColorStop(1, `rgba(255, 40, 70, ${0.6 * k})`);
+      ctx.fillStyle = rim; ctx.fillRect(0, 0, W, H);
+    }
+    drawHud();
+    if (S.mode === 'fight') drawCrosshair();
+  }
+
+  function drawPlayer(p) {
+    // Top-down headphones, facing where you aim
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.aim + Math.PI / 2);
+    ctx.fillStyle = '#2a2433'; ctx.strokeStyle = '#9A7FE0'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#C8B8FF'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, 2, 13, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    ctx.fillStyle = '#9A7FE0';
+    roundRect(-17, -2, 7, 12, 3); ctx.fill();
+    roundRect(10, -2, 7, 12, 3); ctx.fill();
+    ctx.fillStyle = '#E2D9FF';
+    ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(5, -15); ctx.lineTo(-5, -15); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCrosshair() {
+    ctx.strokeStyle = 'rgba(226, 217, 255, 0.85)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mouse.x - 13, mouse.y); ctx.lineTo(mouse.x - 4, mouse.y); ctx.moveTo(mouse.x + 4, mouse.y); ctx.lineTo(mouse.x + 13, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y - 13); ctx.lineTo(mouse.x, mouse.y - 4); ctx.moveTo(mouse.x, mouse.y + 4); ctx.lineTo(mouse.x, mouse.y + 13); ctx.stroke();
+  }
+
+  function drawHud() {
+    const p = S.player;
+    ctx.textAlign = 'left'; ctx.font = '600 14px Oswald, sans-serif';
+    ctx.fillStyle = '#E6E1EC'; ctx.fillText('HEALTH', 16, 24);
+    ctx.fillStyle = '#26232d'; roundRect(74, 13, 220, 12, 6); ctx.fill();
+    const hp = ctx.createLinearGradient(74, 0, 294, 0);
+    hp.addColorStop(0, '#ff5d7a'); hp.addColorStop(1, '#ff8fa6');
+    ctx.fillStyle = hp; roundRect(74, 13, 220 * (p.hp / p.maxHp), 12, 6); ctx.fill();
+    ctx.fillStyle = '#9A93A3'; ctx.font = '500 12px Oswald, sans-serif';
+    ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 302, 24);
+    if (S.weapon) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#E6E1EC'; ctx.font = '600 14px Oswald, sans-serif';
+      ctx.fillText(`WAVE ${S.wave + 1} / ${WAVES.length}`, W - 16, 24);
+      ctx.fillStyle = '#9A93A3'; ctx.font = '500 12px Oswald, sans-serif';
+      ctx.fillText(`${S.zombies.length + S.queue.length} left · ${WEAPONS[S.weapon].name.toUpperCase()}`, W - 16, 42);
+    }
+    if (S.banner && S.mode === 'fight') {
+      ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
+      ctx.textAlign = 'center'; ctx.font = '600 40px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
+      ctx.fillText(S.banner.text, W / 2, H * 0.3); // above the player, who starts in the middle
+      ctx.globalAlpha = 1;
+    }
+    if (paused && S.mode === 'fight') {
+      ctx.textAlign = 'center'; ctx.font = '600 20px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
+      ctx.fillText('Paused: click the game to carry on', W / 2, H / 2 + 70);
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, Math.max(0, h), r) : ctx.rect(x, y, w, Math.max(0, h));
+  }
+</script>
+</body>
+</html>
