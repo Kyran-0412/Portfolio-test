@@ -60,8 +60,9 @@ button.primary:disabled:hover { background: var(--mid); }
   .door.locked { opacity: 0.3; }
   .door.locked:hover, .door.locked:focus-visible { opacity: 0.45; }
   .door.open, .door.done { opacity: 1; }
-  /* The door is drawn at 240 × 340 and scaled to fit whatever size the box is. */
-  .fit { width: 240px; height: 340px; display: grid; place-items: center; flex: none; }
+  /* The door is drawn at 240 × 340 and always shown at a third of that size,
+     centred, so the box around it leaves room for the glow. */
+  .fit { width: 240px; height: 340px; display: grid; place-items: center; flex: none; zoom: 0.34; }
 
   .frame {
     position: absolute; inset: -8px -8px 0; pointer-events: none;
@@ -432,13 +433,6 @@ const Sound = (() => {
 
   const door = document.getElementById('door');
 
-  // Scale the door to fit the box, so resizing the box in Wix resizes the door.
-  function fit() {
-    const scale = Math.min(window.innerWidth / 240, window.innerHeight / 340);
-    document.getElementById('fit').style.zoom = scale;
-  }
-  window.addEventListener('resize', fit);
-  fit();
   const leaf = document.getElementById('leaf');
   let state = null;
   let opening = false;

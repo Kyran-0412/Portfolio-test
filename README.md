@@ -33,7 +33,7 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 
 | File | Where |
 | --- | --- |
-| `wix/embeds/door.html` | Every door box (all 12). Then resize each door box to about **80 × 115 px**: the door scales to fit its box |
+| `wix/embeds/door.html` | Every door box (all 12). The door is a fixed size (about 80 × 115 px) and centred, so any box from about 120 × 150 px leaves room for its glow |
 | `wix/embeds/level-fsharp.html` | Level F♯ page's box (warning line previews the sweep; no ground waves) |
 
 Locked doors are now faint (30% opacity).
@@ -137,7 +137,7 @@ level later only means replacing that one box's code.
 | 11 | B♭ | Circle of Fifths | `doorBb` | `circle-of-fifths.js` | `level-bflat` | `level-bflat.js` |
 | 12 | F | Circle of Fifths | `doorF` | (same page) | `level-f` | `level-f.js` |
 
-- **Doors:** Embed HTML box with `wix/embeds/door.html`, about 80 × 115 px, at the bottom of the page.
+- **Doors:** Embed HTML box with `wix/embeds/door.html`, about 120 × 150 px, at the bottom of the page.
 - **Level pages:** hidden from the menu and from search engines. Embed HTML box with
   `wix/embeds/level-placeholder.html` (Level C uses `level-c.html`), about 980 × 640 px, ID `gameEmbed`.
 - **Tip:** once one level page is set up, duplicate it (**Pages → ⋯ → Duplicate**), then change its name, URL slug and page code.
@@ -180,14 +180,14 @@ Phase 2 sets up the full loop for the first two keys: Home door C → Level C �
 On each page:
 
 1. Add **Embed Code → Embed HTML** at the bottom of the page. Choose **Code** and paste in `wix/embeds/door.html`.
-2. Size it about **80 × 115 px** and set its ID to `door`.
+2. Size it about **120 × 150 px** and set its ID to `door`.
 3. Replace the page code with `wix/pages/home.js` (Home) or `wix/pages/production-logs.js` (Production Logs).
 
 ### 4. The Circle of Fifths page
 
 1. Add a page called **Circle of Fifths**. In **Page Settings → SEO basics**, set the URL slug to `circle-of-fifths`.
 2. Add an Embed HTML box with `wix/embeds/circle.html`, about **700 × 800 px**, ID `circle`.
-3. Below it, add two door boxes (`door.html`, 80 × 115 px) with the IDs `doorBb` and `doorF`.
+3. Below it, add two door boxes (`door.html`, 120 × 150 px) with the IDs `doorBb` and `doorF`.
 4. Replace the page code with `wix/pages/circle-of-fifths.js`.
 
 Your explanation of the circle of fifths can go above or around the graphic.
