@@ -23,7 +23,8 @@ try {
     if (allow) assert.doesNotMatch(connect, /Blocked/);
     else assert.match(connect, /^✗ Blocked: the Wix box does not allow MIDI/);
   }
-  assert.deepEqual(errors, []);
+  // Chrome logs a warning when it blocks MIDI: expected in the blocked case.
+  assert.deepEqual(errors.filter((e) => !/Permissions policy violation: Midi/.test(e)), []);
   console.log('All MIDI test-page checks passed.');
 } finally {
   await close();
