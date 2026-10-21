@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   KEYS, LEVEL_PATHS, emptyProgress, nextKey, isDoorOpen, isCircleComplete, doorState,
-  completeLevel, placeKey, markIntroSeen, parseProgress,
+  completeLevel, placeKey, markIntroSeen, parseProgress, addHeart,
 } from '../wix/public/progress.js';
 import { readFileSync } from 'node:fs';
 
@@ -53,12 +53,12 @@ test('broken or tampered storage is repaired', () => {
   assert.deepEqual(parseProgress('"text"'), emptyProgress());
   assert.deepEqual(
     parseProgress(JSON.stringify({ placed: ['C', 'G', 'A'], held: ['A', 'D', 'E'], seenIntro: true })),
-    { v: 1, placed: ['C', 'G'], held: ['D'], seenIntro: true },
+    { v: 1, placed: ['C', 'G'], held: ['D'], seenIntro: true, hearts: [] },
     'keeps only the next key, drops placed keys out of order',
   );
   assert.deepEqual(
     parseProgress(JSON.stringify({ placed: ['C'], held: ['G'] })),
-    { v: 1, placed: ['C'], held: ['G'], seenIntro: false },
+    { v: 1, placed: ['C'], held: ['G'], seenIntro: false, hearts: [] },
   );
 });
 
@@ -83,4 +83,16 @@ test('embed key list matches the Wix key list', () => {
   const source = readFileSync(new URL('../src/lib/keys.js', import.meta.url), 'utf8');
   const embedKeys = eval(source.match(/const KEYS = (\[[^\]]+\]);/)[1]);
   assert.deepEqual(embedKeys, KEYS);
+});
+
+test('hidden hearts: only in E and B, once each, once the door is open', () => {
+  let p = emptyProgress();
+  assert.equal(addHeart(p, 'E'), p, 'door E not open yet');
+  for (const key of ['C', 'G', 'D', 'A']) p = placeKey(completeLevel(p, key), key);
+  assert.equal(addHeart(p, 'C'), p, 'C hides no heart');
+  p = addHeart(p, 'E');
+  assert.deepEqual(p.hearts, ['E']);
+  assert.equal(addHeart(p, 'E'), p, 'found once');
+  assert.deepEqual(parseProgress(JSON.stringify({ ...p, hearts: ['E', 'E', 'X'] })).hearts, ['E']);
+  assert.deepEqual(parseProgress(JSON.stringify({ placed: [] })).hearts, []);
 });

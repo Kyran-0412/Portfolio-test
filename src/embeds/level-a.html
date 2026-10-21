@@ -131,7 +131,7 @@
       boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
       player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
       meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, moment: null,
-      hearts: HEARTS, hurtFlash: 0, heartPop: 0,
+      hearts: HEARTS + Level.extraHearts, maxHearts: HEARTS + Level.extraHearts, hurtFlash: 0, heartPop: 0,
       unlocked: new Set(phase === 2 && !thirdFound ? UNLOCKS[1] : UNLOCKS[phase]),
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
       held: null, attackIn: 1.2, holdIn: 7, pickupIn: 9, banner: { text: PHASES[phase].name, t: 2 },
@@ -843,7 +843,7 @@
       ctx.fillText(`EAR DEFENDERS ${Math.ceil(S.player.shield)}`, W - 16, 42);
     }
     // Hearts, bottom left. The one just lost pops.
-    for (let i = 0; i < HEARTS; i++) {
+    for (let i = 0; i < S.maxHearts; i++) {
       const lost = i === S.hearts && S.heartPop > 0;
       const size = lost ? 22 + 14 * (S.heartPop / 0.6) : 22;
       drawHeart(28 + i * 30, H - 22, size, i < S.hearts || lost && Math.floor(S.time * 16) % 2 === 0);

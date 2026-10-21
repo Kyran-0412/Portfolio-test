@@ -24,7 +24,7 @@ try {
   console.log('✓ progress survived a reload:', text);
 
   const saved = await page.evaluate(() => localStorage.getItem('cof-progress'));
-  assert.deepEqual(JSON.parse(saved), { v: 1, held: ['G'], placed: ['C'], seenIntro: false });
+  assert.deepEqual(JSON.parse(saved), { v: 1, held: ['G'], placed: ['C'], seenIntro: false, hearts: [] });
   console.log('✓ saved by the page, not the embed:', saved);
 
   await game.locator('#toneBtn').click();

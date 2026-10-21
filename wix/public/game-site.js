@@ -16,6 +16,7 @@ import {
   doorState,
   completeLevel,
   placeKey,
+  addHeart,
 } from 'public/progress.js';
 
 const RETURN_KEY = 'cof-return';
@@ -89,14 +90,18 @@ export function setupLevel(selector, key) {
       const beaten = doorState(loadProgress(), key) === 'done';
       // Test buttons only appear in Preview, never on the live site.
       const testMode = wixWindowFrontend.viewMode === 'Preview';
-      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new', testMode });
+      const extraHearts = loadProgress().hearts.length; // hidden hearts found so far
+      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new', testMode, extraHearts });
     },
-    levelComplete: () => {
+    levelComplete: (message) => {
       const before = loadProgress();
-      const after = completeLevel(before, key);
-      const gotKey = after !== before;
-      if (gotKey) saveProgress(after);
-      embed.postMessage({ type: 'levelSaved', key, gotKey, firstKey: gotKey && key === KEYS[0] });
+      const withKey = completeLevel(before, key);
+      // A level can also report finding its hidden heart.
+      const after = message.heart ? addHeart(withKey, key) : withKey;
+      const gotKey = withKey !== before;
+      const gotHeart = after.hearts.length > withKey.hearts.length;
+      if (after !== before) saveProgress(after);
+      embed.postMessage({ type: 'levelSaved', key, gotKey, gotHeart, firstKey: gotKey && key === KEYS[0] });
     },
     navigate: (message) => {
       if (message.to === 'circle') wixLocationFrontend.to(CIRCLE_PATH);

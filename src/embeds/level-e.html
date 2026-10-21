@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 5: Melody Memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #title { font-size: 36px; }
+  #status { font: 600 18px var(--heading); letter-spacing: 0.06em; color: var(--glow); min-height: 1.4em; }
+  #status.listen { color: var(--quiet); }
+  .beads { display: flex; gap: 12px; margin: 10px 0 4px; min-height: 28px; }
+  .bead {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--violet); border: 1px solid var(--accent);
+    transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+  }
+  .bead.play { background: var(--glow); box-shadow: 0 0 14px rgba(200, 184, 255, 0.9); transform: scale(1.15); }
+  .bead.done { background: var(--bright); box-shadow: 0 0 8px rgba(154, 127, 224, 0.6); }
+  .bead.miss { background: #c46a7a; }
+  #feedback { min-height: 1.6em; color: var(--glow); }
+  #feedback.bad { color: #e7a3b0; }
+  .piano.scale-mode { --white-w: 58px; }
+  .piano.scale-mode .piano-keys { height: 112px; }
+  .piano.scale-mode .piano-name { font-size: 13px; color: #362d40; opacity: 1; }
+  .piano.scale-mode .piano-help { visibility: hidden; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 5, key of E: Simon Says. A melody in E major plays; repeat it.
+  // Each round adds one note. Hidden: a run with no mistakes finds a heart.
+  const ROOT = 64; // E4
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // keys A–K
+  const FIRST = 3, LAST = 8; // melody length in the first and last round
+  const ROUNDS = LAST - FIRST + 1;
+
+  let melody = [];
+  let length = FIRST;
+  let input = 0;          // how many notes of this round the player has got right
+  let mistakes = 0;       // over the whole run: none means the hidden heart
+  let mode = 'wait';      // 'listen' (melody playing), 'input' (your turn) or 'wait'
+  let ui = {};
+  const piano = Level.piano;
+  window.__melody = { get melody() { return melody; }, get length() { return length; }, get mistakes() { return mistakes; } };
+
+  Level.setup({
+    description: 'Listen to a melody in E major, then play it back. Each round it grows by one note.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="round" id="round"></div>
+        <h1 id="title">Repeat the melody</h1>
+        <div id="status"></div>
+        <div class="beads" id="beads"></div>
+        <p id="feedback"></p>
+        <div class="buttons"><button id="againBtn">Listen again</button></div>`;
+      ui = {
+        round: stage.querySelector('#round'), status: stage.querySelector('#status'),
+        beads: stage.querySelector('#beads'), feedback: stage.querySelector('#feedback'),
+        again: stage.querySelector('#againBtn'),
+      };
+      ui.again.onclick = () => { ui.again.blur(); if (mode === 'input') play(); };
+      piano.useScale(ROOT);
+      melody = growFrom([]);
+      startRound();
+    },
+  });
+
+  // Melodies move mostly by step, with the odd leap, and never repeat a note
+  // three times in a row. Each round keeps the melody and adds a note.
+  function pickNext(prev) {
+    if (prev === null) return SCALE[Math.floor(Math.random() * 5)];
+    const i = SCALE.indexOf(prev);
+    const steps = [-2, -1, -1, 1, 1, 2, 3, -3];
+    for (;;) {
+      const j = i + steps[Math.floor(Math.random() * steps.length)];
+      if (j >= 0 && j < SCALE.length) return SCALE[j];
+    }
+  }
+  function growFrom(start) {
+    const m = [...start];
+    while (m.length < LAST) {
+      let note = pickNext(m.length ? m[m.length - 1] : null);
+      if (m.length >= 2 && note === m[m.length - 1] && note === m[m.length - 2]) continue;
+      m.push(note);
+    }
+    return m;
+  }
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  function beads() {
+    ui.beads.innerHTML = '';
+    for (let i = 0; i < length; i++) {
+      const b = document.createElement('span');
+      b.className = 'bead' + (i < input ? ' done' : '');
+      ui.beads.appendChild(b);
+    }
+  }
+
+  function startRound() {
+    input = 0;
+    ui.round.textContent = `Round ${length - FIRST + 1} of ${ROUNDS}`;
+    beads();
+    say('');
+    setTimeout(play, 600);
+  }
+
+  // Plays this round's notes, lighting each bead and piano key in time.
+  function play() {
+    if (mode === 'listen') return;
+    mode = 'listen';
+    input = 0;
+    beads();
+    ui.status.textContent = 'Listen…';
+    ui.status.className = 'listen';
+    ui.again.disabled = true;
+    const beat = Math.max(0.38, 0.6 - (length - FIRST) * 0.04);
+    melody.slice(0, length).forEach((midi, i) => {
+      Sound.note(midi, i * beat + 0.1, beat * 0.85, 0.42);
+      setTimeout(() => {
+        ui.beads.querySelectorAll('.bead').forEach((b, j) => b.classList.toggle('play', j === i));
+        piano.mark(midi, 'good');
+      }, (i * beat + 0.1) * 1000);
+    });
+    setTimeout(() => {
+      ui.beads.querySelectorAll('.bead').forEach((b) => b.classList.remove('play'));
+      mode = 'input';
+      ui.again.disabled = false;
+      ui.status.textContent = 'Your turn';
+      ui.status.className = '';
+    }, (length * beat + 0.2) * 1000);
+  }
+
+  piano.onNoteOn((midi) => {
+    if (mode !== 'input') return;
+    const want = melody[input];
+    const bead = ui.beads.children[input];
+    if (midi !== want) {
+      mistakes++;
+      Sound.buzz();
+      piano.mark(midi, 'bad');
+      if (bead) bead.classList.add('miss');
+      say('Not quite. Listen again.', true);
+      mode = 'wait'; // ignore keys until the replay
+      ui.status.textContent = 'Listen again…';
+      ui.status.className = 'listen';
+      setTimeout(play, 1100);
+      return;
+    }
+    if (bead) bead.classList.add('done');
+    input++;
+    if (input < length) return;
+
+    // Round complete
+    mode = 'wait';
+    ui.status.textContent = 'Nice';
+    if (length === LAST) {
+      say('Every note, every round. That’s a good ear.');
+      ui.again.disabled = true;
+      setTimeout(() => Level.win({ heart: mistakes === 0 }), 1400);
+      return;
+    }
+    setTimeout(() => {
+      Sound.chord([ROOT, ROOT + 4, ROOT + 7], 0, 0.7, 0.3);
+      length++;
+      startRound();
+    }, 700);
+  });
+</script>
+</body>
+</html>

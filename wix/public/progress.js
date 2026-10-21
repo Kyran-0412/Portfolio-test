@@ -16,10 +16,21 @@ export const LEVEL_PATHS = {
   Bb: '/level-bflat', F: '/level-f',
 };
 
+// Levels that hide an extra heart (more starting hearts in boss fights).
+export const HEART_LEVELS = ['E', 'B'];
+
 // held:   keys won from a level but not yet placed in the circle
 // placed: keys placed in the circle, always in circle order
+// hearts: levels whose hidden extra heart has been found
 export function emptyProgress() {
-  return { v: 1, held: [], placed: [], seenIntro: false };
+  return { v: 1, held: [], placed: [], seenIntro: false, hearts: [] };
+}
+
+// Finding a level's hidden heart. Only counts for levels that hide one,
+// once each, and only if that level's door is open.
+export function addHeart(progress, key) {
+  if (!HEART_LEVELS.includes(key) || progress.hearts.includes(key) || !isDoorOpen(progress, key)) return progress;
+  return { ...progress, hearts: [...progress.hearts, key] };
 }
 
 // The key whose level is currently open, or null once the circle is complete.
@@ -83,5 +94,7 @@ export function parseProgress(raw) {
   const next = KEYS[placed.length];
   const held = Array.isArray(data.held) && data.held.includes(next) ? [next] : [];
 
-  return { v: 1, held, placed, seenIntro: data.seenIntro === true };
+  const hearts = HEART_LEVELS.filter((k) => Array.isArray(data.hearts) && data.hearts.includes(k));
+
+  return { v: 1, held, placed, seenIntro: data.seenIntro === true, hearts };
 }

@@ -100,6 +100,11 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 @keyframes rise { from { transform: translateY(140px) scale(0.6) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes shine { 0%, 100% { filter: drop-shadow(0 0 8px rgba(154, 127, 224, 0.55)); } 50% { filter: drop-shadow(0 0 22px rgba(200, 184, 255, 0.9)); } }
 #found .text { animation: fade-in 0.6s 0.7s ease-out both; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.heart-found { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #ff8fa6; font-weight: 600; animation: fade-in 0.6s 1.1s ease-out both; }
+.heart-found svg { width: 46px; height: 40px; fill: #ff5d7a; filter: drop-shadow(0 0 12px rgba(255, 93, 122, 0.8)); animation: heart-pop 0.7s 1.1s cubic-bezier(0.3, 1.6, 0.5, 1) both, heart-beat 1.4s 1.8s ease-in-out infinite; }
+@keyframes heart-pop { from { transform: scale(0.2); } to { transform: scale(1); } }
+@keyframes heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.15); } 30% { transform: scale(1); } 45% { transform: scale(1.1); } }
+.heart-found[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -599,6 +604,7 @@ const Level = (() => {
   const $ = (id) => document.getElementById(id);
   let key = null;
   let testMode = false;
+  let extraHearts = 0;
   let onStart = () => {};
   let finishing = false;
 
@@ -637,6 +643,10 @@ const Level = (() => {
       <div class="text">
         <h1 id="foundTitle"></h1>
         <p class="lead" id="foundText"></p>
+        <div class="heart-found" id="heartFound" hidden>
+          <svg viewBox="-12 -12 24 20" aria-hidden="true"><path d="M0 6C-10-2-10-10-5-10C-2-10 0-8 0-6C0-8 2-10 5-10C10-10 10-2 0 6Z"/></svg>
+          <span>You found a hidden heart. You’ll start every boss fight with one more.</span>
+        </div>
         <div class="buttons" id="foundButtons"></div>
       </div>
     </section>`);
@@ -667,6 +677,7 @@ const Level = (() => {
   Bridge.on('level', (message) => {
     key = message.key;
     testMode = message.testMode === true;
+    extraHearts = Number(message.extraHearts) || 0;
     if (touchOnly) return show('phone');
     $('introEyebrow').textContent = `Level ${KEYS.indexOf(key) + 1} · Key of ${keyLabel(key)}`;
     $('introTitle').textContent = KEY_INFO[key].level;
@@ -689,15 +700,18 @@ const Level = (() => {
     $('keyArtLabel').textContent = label;
     const buttons = $('foundButtons');
     buttons.innerHTML = '';
-    $('foundTitle').textContent = message.gotKey ? `You found the key of ${label}.` : 'Level complete';
+    $('foundTitle').textContent = message.gotKey ? `You found the key of ${label}.`
+      : message.gotHeart ? 'Hidden heart found' : 'Level complete';
     if (message.gotKey) Sound.keyFound(rootMidi(key));
+    $('heartFound').hidden = !message.gotHeart;
+    if (message.gotHeart) Sound.chord([rootMidi(key) + 12, rootMidi(key) + 16, rootMidi(key) + 19], 1.2, 1.6, 0.35);
 
     // The tutorial is the only time the player is told what to do.
     if (message.firstKey) {
       $('foundText').textContent = 'You just discovered your first key. Take it to the circle of fifths to continue.';
       buttons.append(button('Go to the circle of fifths', () => Bridge.send({ type: 'navigate', to: 'circle' }), true));
     } else {
-      $('foundText').textContent = message.gotKey ? '' : 'You already have this key.';
+      $('foundText').textContent = message.gotKey || message.gotHeart ? '' : 'You already have this key.';
     }
     buttons.append(button('Back', () => Bridge.send({ type: 'navigate', to: 'back' }), !message.firstKey));
     show('found');
@@ -708,6 +722,8 @@ const Level = (() => {
     get key() { return key; },
     // True in Wix Preview: levels may show test shortcuts.
     get testMode() { return testMode; },
+    // Hidden hearts found so far: boss fights add these to the starting hearts.
+    get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
     setup({ description, start }) {
@@ -715,11 +731,12 @@ const Level = (() => {
       onStart = start;
       Bridge.start();
     },
-    win() {
+    // win({ heart: true }) also reports finding this level's hidden heart.
+    win(options = {}) {
       if (finishing) return;
       finishing = true;
       piano.setEnabled(false);
-      Bridge.send({ type: 'levelComplete' });
+      Bridge.send({ type: 'levelComplete', heart: options.heart === true });
     },
   };
 })();
