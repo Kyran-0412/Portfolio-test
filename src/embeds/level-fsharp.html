@@ -261,8 +261,10 @@
   function laserAngle(x) { return Math.atan2(S.player.y - (S.boss.y + MUZZLE), x - S.boss.x); }
   function startLasers() {
     const ph = PHASES[S.phase], p = S.player;
+    // e counts up from 0: the first LASER_WARN seconds are the preview, then
+    // the live beam carries on along the same path at the same speed.
     const make = (fromX, toX, cancellable, reverse) => ({
-      stage: 'warn', t: LASER_WARN, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
+      stage: 'warn', e: 0, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
       sound: [ROOT, ROOT + 6].map((m) => Sound.hold(m, cancellable ? 0.09 : 0.12)), // F♯ + C: the tritone
     });
     if (S.phase === 2) {
@@ -498,19 +500,17 @@
     S.warnings = S.warnings.filter((w) => w.t > 0);
     b.warn = S.warnings.some((w) => w.kind !== 'ground') || S.lasers.length ? 1 - Math.min(...S.warnings.map((w) => w.t / w.total), 1) : 0;
 
-    // Lasers: the warning line traces the sweep first, so you can see which
-    // way it will go; then the real beam follows the same path.
+    // Lasers: one continuous movement. It starts as a faint preview line,
+    // already moving, then turns live and carries on from that point at the
+    // same speed. k < 0 is the preview, 0 to 1 the live sweep (a0 to a1).
     for (const l of S.lasers) {
-      l.t -= dt;
-      const progress = (k) => (l.reverse ? (k < 0.5 ? k * 2 : (1 - k) * 2) : k);
-      if (l.stage === 'warn') {
-        l.a = l.a0 + (l.a1 - l.a0) * progress(Math.min(1, 1 - l.t / LASER_WARN));
-        if (l.t <= 0) { l.stage = 'sweep'; l.t = l.dur; l.a = l.a0; }
-        continue;
-      }
-      const k = progress(1 - l.t / l.dur);
-      l.a = l.a0 + (l.a1 - l.a0) * k;
-      if (l.t <= 0) { endLaser(l); continue; }
+      l.e += dt;
+      const k = (l.e - LASER_WARN) / l.dur;
+      const along = l.reverse ? (k < 0.5 ? k * 2 : (1 - k) * 2) : k; // some sweeps turn back halfway
+      l.a = l.a0 + (l.a1 - l.a0) * along;
+      l.stage = k < 0 ? 'warn' : 'sweep';
+      if (k >= 1) { endLaser(l); continue; }
+      if (l.stage === 'warn') continue;
       if (distanceToBeam(l, p.x, p.y - 6) < LASER_WIDTH) { hurt(); if (!S.running) return; }
     }
     S.lasers = S.lasers.filter((l) => !l.gone);
@@ -612,7 +612,7 @@
       const ex = ox + Math.cos(a) * 900, ey = oy + Math.sin(a) * 900;
       const color = l.cancellable ? '200, 184, 255' : '255, 70, 100';
       if (l.stage === 'warn') {
-        const k = 1 - l.t / LASER_WARN;
+        const k = Math.min(1, l.e / LASER_WARN);
         ctx.strokeStyle = `rgba(${color}, ${0.15 + 0.25 * k})`;
         ctx.lineWidth = 6 + 10 * k;
         ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();

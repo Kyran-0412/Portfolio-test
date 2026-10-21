@@ -30,7 +30,7 @@ try {
   // A laser sweeping straight down onto the player.
   const laserOnPlayer = (cancellable) => S((c) => {
     const s = window.__boss, a = Math.atan2(s.player.y - 6 - (s.boss.y + 40 * 0.72), s.player.x - s.boss.x);
-    s.lasers.push({ stage: 'sweep', t: 1, dur: 1, a0: a, a1: a, cancellable: c, reverse: false, sound: [] });
+    s.lasers.push({ stage: 'sweep', e: 1.2, dur: 1, a0: a, a1: a, cancellable: c, reverse: false, sound: [] });
   }, cancellable);
 
   assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯']);
@@ -43,14 +43,20 @@ try {
   await calm();
   await S(() => startLasers());
   assert.equal(await S(() => window.__boss.lasers[0].cancellable), true);
-  // The warning line moves along the sweep's path before the beam fires.
-  const a0 = await S(() => window.__boss.lasers[0].a0); // where the sweep starts
-  await page.waitForTimeout(600);
-  const aMid = await S(() => window.__boss.lasers[0].a);
+  // The preview is the start of the sweep: it moves towards where the live
+  // beam begins, then the beam carries on from there at the same speed.
+  const { a0, a1 } = await S(() => window.__boss.lasers[0]);
+  await page.waitForTimeout(300);
+  const aEarly = await S(() => window.__boss.lasers[0].a);
+  await page.waitForTimeout(400);
+  const aLater = await S(() => window.__boss.lasers[0].a);
   assert.equal(await S(() => window.__boss.lasers[0].stage), 'warn');
-  assert.ok(Math.abs(aMid - a0) > 0.05, 'the warning line sweeps');
+  const toward = Math.sign(a1 - a0);
+  assert.ok(Math.sign(aLater - aEarly) === toward && Math.sign(a0 - aLater) === toward, 'preview moves along the path, short of the live start');
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lt-warn.png` });
   await frame.waitForFunction(() => window.__boss.lasers.length && window.__boss.lasers[0].stage === 'sweep', null, { timeout: 3000 });
+  const aLive = await S(() => window.__boss.lasers[0].a);
+  assert.ok(Math.abs(aLive - a0) < Math.abs(a1 - a0) * 0.15, 'the live beam picks up where the preview left off');
   await S(() => { window.__boss.player.safe = 99; }); // stay safe for the screenshot
   await page.waitForTimeout(400);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lt-sweep.png` });
