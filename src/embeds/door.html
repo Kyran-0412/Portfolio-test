@@ -19,12 +19,17 @@
 
   .door {
     position: relative; width: 160px; height: 260px; perspective: 700px; cursor: pointer;
-    opacity: 0.45; transition: opacity 0.6s, filter 0.4s; outline: none;
+    opacity: 0.3; transition: opacity 0.6s, filter 0.4s; outline: none;
   }
   /* Before the page code answers, the door shows dim with no letter. If it
      stays like that in Preview, the page code or the box ID needs checking. */
   .plaque:empty { display: none; }
-  .door.locked, .door.open, .door.done { opacity: 1; }
+  /* Locked doors stay faint so they don't stand out on the page. */
+  .door.locked { opacity: 0.3; }
+  .door.locked:hover, .door.locked:focus-visible { opacity: 0.45; }
+  .door.open, .door.done { opacity: 1; }
+  /* The door is drawn at 240 × 340 and scaled to fit whatever size the box is. */
+  .fit { width: 240px; height: 340px; display: grid; place-items: center; flex: none; }
 
   .frame {
     position: absolute; inset: -8px -8px 0; pointer-events: none;
@@ -95,6 +100,7 @@
 </head>
 <body>
 <div class="stage">
+ <div class="fit" id="fit">
   <div class="door" id="door" role="button" tabindex="0" aria-label="Door">
     <div class="doorway"></div>
     <div class="leaf" id="leaf">
@@ -106,6 +112,7 @@
     <div class="frame"></div>
     <div class="floor"></div>
   </div>
+ </div>
 </div>
 
 <script data-include="lib/keys.js"></script>
@@ -116,6 +123,14 @@
   const DOOR_ART = { locked: '', open: '', done: '' };
 
   const door = document.getElementById('door');
+
+  // Scale the door to fit the box, so resizing the box in Wix resizes the door.
+  function fit() {
+    const scale = Math.min(window.innerWidth / 240, window.innerHeight / 340);
+    document.getElementById('fit').style.zoom = scale;
+  }
+  window.addEventListener('resize', fit);
+  fit();
   const leaf = document.getElementById('leaf');
   let state = null;
   let opening = false;

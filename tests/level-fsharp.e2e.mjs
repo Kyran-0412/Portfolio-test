@@ -43,7 +43,12 @@ try {
   await calm();
   await S(() => startLasers());
   assert.equal(await S(() => window.__boss.lasers[0].cancellable), true);
+  // The warning line moves along the sweep's path before the beam fires.
+  const a0 = await S(() => window.__boss.lasers[0].a0); // where the sweep starts
   await page.waitForTimeout(600);
+  const aMid = await S(() => window.__boss.lasers[0].a);
+  assert.equal(await S(() => window.__boss.lasers[0].stage), 'warn');
+  assert.ok(Math.abs(aMid - a0) > 0.05, 'the warning line sweeps');
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lt-warn.png` });
   await frame.waitForFunction(() => window.__boss.lasers.length && window.__boss.lasers[0].stage === 'sweep', null, { timeout: 3000 });
   await S(() => { window.__boss.player.safe = 99; }); // stay safe for the screenshot
@@ -88,13 +93,8 @@ try {
   assert.ok(await S(() => window.__boss.texts.some((t) => /recharging/.test(t.text))));
   console.log('✓ phase 2: flipped to G♭ (flats on the keys); sus4 shockwave clears notes, then recharges');
 
-  // Power-chord ground waves roll both ways along the floor.
-  await calm();
-  await S(() => { startGround(); window.__boss.player.x = window.__boss.player.x > 450 ? 60 : 840; }); // step away from the warning
-  await frame.waitForFunction(() => window.__boss.waves.length === 2, null, { timeout: 2000 });
-  await page.waitForTimeout(250);
-  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lt-ground.png` });
-  console.log('✓ power-chord slam sends two ground waves');
+  // No ground waves in this fight (saved for the Final Boss).
+  assert.equal(await S(() => window.__boss.groundIn > 50), true, 'no ground waves scheduled');
 
   // Phase 3: red double lasers that can't be resolved.
   await calm();
