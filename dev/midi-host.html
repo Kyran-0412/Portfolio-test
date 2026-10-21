@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>MIDI host</title></head>
+<body style="margin:0;background:#181818">
+<!-- Loads the MIDI test from a different address, like a Wix embed box.
+     ?allow=1 adds allow="midi" to the box. -->
+<script>
+  const params = new URLSearchParams(location.search);
+  const f = document.createElement('iframe');
+  f.id = 'box';
+  f.width = 760; f.height = 700;
+  if (params.get('allow')) f.allow = 'midi';
+  f.src = `${params.get('origin')}/wix/embeds/midi-test.html`;
+  document.body.append(f);
+</script>
+</body>
+</html>

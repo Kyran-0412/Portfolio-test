@@ -1,0 +1,396 @@
+<!-- Built from src/embeds/midi-test.html. Paste this whole file into a Wix Embed HTML box (Code). -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDI Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* lib/theme.css */
+/* Site palette and fonts (Oswald headings, Inter text). */
+:root {
+  --bg: #181818;
+  --panel: #242424;
+  --accent: #362D40;
+  --violet: #322D5A;
+  --mid: #5E3E84;
+  --bright: #9A7FE0;
+  --glow: #C8B8FF;
+  --moon: #E2D9FF;
+  --text: #E6E1EC;
+  --quiet: #9A93A3;
+  --heading: Oswald, 'Arial Narrow', Impact, sans-serif;
+  --body: Inter, system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; color: var(--text); font: 15px/1.5 var(--body); }
+button {
+  font: 600 15px var(--body); color: var(--text); background: var(--accent);
+  border: 1px solid var(--mid); border-radius: 8px; padding: 10px 18px; cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+button:hover, button:focus-visible { background: var(--mid); box-shadow: 0 0 14px rgba(154, 127, 224, 0.45); outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+button:disabled:hover { background: var(--accent); }
+button.primary:disabled:hover { background: var(--mid); }
+</style>
+<style>
+  body { background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 32px; }
+  h1 { font: 600 28px var(--heading); margin: 0 0 6px; }
+  h2 { font: 600 17px var(--heading); color: var(--glow); margin: 0 0 6px; }
+  p { margin: 0 0 10px; color: var(--quiet); }
+  section { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+  .status { font-weight: 600; }
+  .ok { color: #7FD8A4; }
+  .fail { color: #F08A8A; }
+  .wait { color: var(--quiet); }
+  .notes { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; margin-top: 8px; }
+  .note { font: 600 15px var(--heading); background: var(--mid); border: 1px solid var(--bright); border-radius: 6px; padding: 4px 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MIDI Test</h1>
+  <p>Plug in your MIDI keyboard first, then work through the sections. Tell Claude what each one says.</p>
+
+  <section>
+    <h2>1. Browser support</h2>
+    <div id="support" class="status wait">Checking…</div>
+  </section>
+
+  <section>
+    <h2>2. MIDI inside the Wix box</h2>
+    <p>Press the button. Your browser may ask permission to use MIDI devices: allow it.</p>
+    <button class="primary" id="connectBtn">Connect MIDI</button>
+    <div id="connect" class="status wait" style="margin-top:8px"></div>
+    <div id="devices" class="wait"></div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <section>
+    <h2>3. Backup: its own window</h2>
+    <p>Only needed if section 2 says "Blocked". Opens this test in a new window, where MIDI is allowed, and checks it can still talk back to this page.</p>
+    <button id="windowBtn">Open in a new window</button>
+    <div id="window" class="status wait" style="margin-top:8px"></div>
+  </section>
+</main>
+
+<script>
+/* lib/sound.js */
+// Sound engine. Plays your samples when SAMPLES lists them, otherwise a soft
+// built-in synth. Samples only need one note every few semitones: the nearest
+// one is pitched to fill the gaps.
+const Sound = (() => {
+  // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
+  const SAMPLES = {};
+
+  let ctx = null;
+  let out = null;
+  const buffers = {};
+
+  function audio() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      out = ctx.createDynamicsCompressor();
+      out.connect(ctx.destination);
+      loadSamples();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  async function loadSamples() {
+    for (const [midi, url] of Object.entries(SAMPLES)) {
+      try {
+        const data = await (await fetch(url)).arrayBuffer();
+        buffers[midi] = await ctx.decodeAudioData(data);
+      } catch (err) {
+        // A missing sample falls back to the synth.
+      }
+    }
+  }
+
+  function nearestSample(midi) {
+    let best = null;
+    for (const m of Object.keys(buffers).map(Number)) {
+      if (best === null || Math.abs(m - midi) < Math.abs(best - midi)) best = m;
+    }
+    return best;
+  }
+
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  // Starts a note that rings until stop() is called. Used for held keys.
+  function voice(midi, t, volume) {
+    const a = audio();
+    const gain = a.createGain();
+    gain.connect(out);
+    const sources = [];
+
+    const sample = nearestSample(midi);
+    if (sample !== null) {
+      const src = a.createBufferSource();
+      src.buffer = buffers[sample];
+      src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
+      gain.gain.setValueAtTime(volume, t);
+      src.connect(gain);
+      src.start(t);
+      sources.push(src);
+    } else {
+      const filter = a.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2600;
+      filter.connect(gain);
+      for (const detune of [-7, 7]) {
+        const osc = a.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = hz(midi);
+        osc.detune.value = detune;
+        osc.connect(filter);
+        osc.start(t);
+        sources.push(osc);
+      }
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(volume * 0.5, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(volume * 0.25, t + 0.3);
+    }
+
+    let stopped = false;
+    return {
+      stop(at = a.currentTime) {
+        if (stopped) return;
+        stopped = true;
+        const end = Math.max(at, a.currentTime);
+        gain.gain.cancelScheduledValues(end);
+        gain.gain.setTargetAtTime(0.0001, end, 0.12);
+        sources.forEach((src) => src.stop(end + 1));
+      },
+    };
+  }
+
+  // One note of a set length. `when` is seconds from now.
+  function note(midi, when = 0, length = 1.2, volume = 0.4) {
+    const t = audio().currentTime + 0.03 + when;
+    voice(midi, t, volume).stop(t + length);
+  }
+
+  // A held note: returns an object with stop().
+  function hold(midi, volume = 0.4) {
+    return voice(midi, audio().currentTime + 0.01, volume);
+  }
+
+  function chord(midis, when = 0, length = 1.2, volume = 0.4) {
+    midis.forEach((m) => note(m, when, length, volume / Math.sqrt(midis.length)));
+  }
+
+  // Filtered noise, for thuds and whooshes.
+  function noise(when, length, from, to, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const buffer = a.createBuffer(1, Math.ceil(a.sampleRate * length), a.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource();
+    const filter = a.createBiquadFilter();
+    const gain = a.createGain();
+    src.buffer = buffer;
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(from, t);
+    filter.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    src.connect(filter).connect(gain).connect(out);
+    src.start(t);
+  }
+
+  function thump(when, from, to, length, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + length + 0.05);
+  }
+
+  return {
+    unlock: audio,
+    note,
+    hold,
+    chord,
+    // A wrong note: a soft low buzz.
+    buzz() {
+      const a = audio();
+      const t = a.currentTime + 0.02;
+      const osc = a.createOscillator();
+      const filter = a.createBiquadFilter();
+      const gain = a.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 98;
+      filter.type = 'lowpass';
+      filter.frequency.value = 500;
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(filter).connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    },
+    // Locked door: two dull knocks.
+    locked() {
+      thump(0, 120, 55, 0.18, 0.5);
+      noise(0, 0.08, 900, 200, 0.25);
+      thump(0.11, 110, 50, 0.16, 0.35);
+    },
+    // Getting hit in a fight: a short, quiet feedback squeal.
+    squeal() {
+      const a = audio();
+      const t = a.currentTime + 0.01;
+      const osc = a.createOscillator();
+      const gain = a.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2100, t);
+      osc.frequency.exponentialRampToValueAtTime(3200, t + 0.25);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.06, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.32);
+      noise(0, 0.12, 3000, 800, 0.12);
+    },
+    // A note landing on the boss.
+    hit() { thump(0, 190, 90, 0.12, 0.28); },
+    // Ear defenders blocking a note.
+    block() { noise(0, 0.1, 5000, 1500, 0.18); },
+    // A lock springing open: two clicks and a soft thud.
+    unlocked() {
+      noise(0, 0.03, 6000, 3000, 0.35);
+      noise(0.07, 0.03, 7000, 3500, 0.3);
+      thump(0.1, 160, 70, 0.2, 0.35);
+    },
+    // Door swinging open.
+    whoosh() {
+      noise(0, 0.6, 300, 2400, 0.12);
+    },
+    // A key going into the circle: its perfect fifth, then its major triad.
+    insert(root) {
+      chord([root, root + 7], 0, 0.9, 0.5);
+      chord([root, root + 4, root + 7, root + 12], 0.55, 2.4, 0.55);
+    },
+    // Clicking a lit key once the circle is complete.
+    fifth(root) {
+      chord([root, root + 7], 0, 1.1, 0.45);
+    },
+    // Finding a key at the end of a level: a rising arpeggio.
+    keyFound(root) {
+      [0, 4, 7, 12, 16].forEach((step, i) => note(root + step, i * 0.12, 1.4, 0.35));
+    },
+  };
+})();
+</script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const noteName = (m) => `${NAMES[m % 12]}${Math.floor(m / 12) - 1}`;
+  const set = (id, kind, text) => { $(id).className = 'status ' + kind; $(id).textContent = text; };
+  const isPopup = Boolean(window.opener) && window.opener !== window;
+
+  // 1. Support, and whether this box is allowed to use MIDI at all.
+  const supported = typeof navigator.requestMIDIAccess === 'function';
+  const policy = document.featurePolicy || document.permissionsPolicy;
+  const allowed = policy && policy.allowsFeature ? policy.allowsFeature('midi') : null;
+  if (!supported) {
+    set('support', 'fail', '✗ This browser has no MIDI support. Try Chrome or Edge (Safari has none).');
+  } else if (allowed === false) {
+    set('support', 'fail', '✗ MIDI is supported, but this box is not allowed to use it (blocked by the page around it).');
+  } else {
+    set('support', 'ok', `✓ MIDI is supported${allowed ? ' and allowed here' : ''}.${isPopup ? ' (Running in its own window.)' : ''}`);
+  }
+
+  // 2. Connect and show notes.
+  const held = new Map();
+  $('connectBtn').onclick = async () => {
+    Sound.unlock();
+    if (!supported) return set('connect', 'fail', '✗ No MIDI support in this browser.');
+    set('connect', 'wait', 'Asking for MIDI access…');
+    let access;
+    try {
+      access = await navigator.requestMIDIAccess();
+    } catch (err) {
+      const name = err && err.name;
+      if (name === 'SecurityError') {
+        return set('connect', 'fail', isPopup
+          ? `✗ Blocked in the new window too (${name}).`
+          : `✗ Blocked: the Wix box does not allow MIDI. Try section 3. (${name})`);
+      }
+      if (name === 'NotAllowedError') {
+        return set('connect', 'fail', '✗ Permission was refused. Allow MIDI devices for this site (the icon in the address bar), then press Connect again.');
+      }
+      return set('connect', 'fail', `✗ Could not connect: ${err && err.message}`);
+    }
+    const listInputs = () => {
+      const inputs = [...access.inputs.values()];
+      $('devices').textContent = inputs.length
+        ? 'Devices: ' + inputs.map((i) => i.name).join(', ')
+        : 'No MIDI devices found. Is the keyboard plugged in and switched on?';
+      inputs.forEach((input) => { input.onmidimessage = onMessage; });
+      return inputs.length;
+    };
+    const count = listInputs();
+    access.onstatechange = listInputs;
+    set('connect', 'ok', `✓ Connected${count ? '' : ' (no devices yet)'}. Play some notes: they should appear below and sound.`);
+    report({ type: 'midi', ok: true });
+  };
+
+  function onMessage(event) {
+    const [status, note, velocity] = event.data;
+    const kind = status & 0xf0;
+    if (kind === 0x90 && velocity > 0) {
+      if (held.has(note)) return;
+      held.set(note, Sound.hold(note, 0.2 + (velocity / 127) * 0.35));
+      const chip = document.createElement('span');
+      chip.className = 'note';
+      chip.textContent = `${noteName(note)} (velocity ${velocity})`;
+      $('notes').prepend(chip);
+      while ($('notes').children.length > 12) $('notes').lastChild.remove();
+      report({ type: 'midiNote', note });
+    } else if (kind === 0x80 || (kind === 0x90 && velocity === 0)) {
+      const sound = held.get(note);
+      if (sound) { sound.stop(); held.delete(note); }
+    }
+  }
+
+  // 3. The backup route: this same test in its own window, reporting back.
+  function report(message) {
+    if (isPopup) window.opener.postMessage({ from: 'midi-test-window', ...message }, '*');
+  }
+  window.addEventListener('message', (event) => {
+    const m = event.data;
+    if (!m || m.from !== 'midi-test-window') return;
+    if (m.type === 'hello') set('window', 'ok', '✓ The new window opened and can talk to this page.');
+    if (m.type === 'midi') set('window', 'ok', '✓ MIDI works in the new window, and it can talk back to this page. The backup route works.');
+    if (m.type === 'midiNote') set('window', 'ok', `✓ Backup route works: the new window sent the note ${noteName(m.note)} back here.`);
+  });
+  $('windowBtn').onclick = () => {
+    const w = window.open(location.href, 'midi-test', 'width=760,height=720');
+    set('window', w ? 'wait' : 'fail', w ? 'Opened. In the new window, press Connect MIDI and play a note…' : '✗ The browser blocked the new window (pop-up blocker?).');
+  };
+  if (isPopup) {
+    report({ type: 'hello' });
+    $('windowBtn').disabled = true;
+    set('window', 'ok', 'This is the new window. Press Connect MIDI above and play.');
+  }
+</script>
+</body>
+</html>

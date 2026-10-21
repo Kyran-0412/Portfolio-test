@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDI Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<style>
+  body { background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 32px; }
+  h1 { font: 600 28px var(--heading); margin: 0 0 6px; }
+  h2 { font: 600 17px var(--heading); color: var(--glow); margin: 0 0 6px; }
+  p { margin: 0 0 10px; color: var(--quiet); }
+  section { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+  .status { font-weight: 600; }
+  .ok { color: #7FD8A4; }
+  .fail { color: #F08A8A; }
+  .wait { color: var(--quiet); }
+  .notes { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; margin-top: 8px; }
+  .note { font: 600 15px var(--heading); background: var(--mid); border: 1px solid var(--bright); border-radius: 6px; padding: 4px 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MIDI Test</h1>
+  <p>Plug in your MIDI keyboard first, then work through the sections. Tell Claude what each one says.</p>
+
+  <section>
+    <h2>1. Browser support</h2>
+    <div id="support" class="status wait">Checking…</div>
+  </section>
+
+  <section>
+    <h2>2. MIDI inside the Wix box</h2>
+    <p>Press the button. Your browser may ask permission to use MIDI devices: allow it.</p>
+    <button class="primary" id="connectBtn">Connect MIDI</button>
+    <div id="connect" class="status wait" style="margin-top:8px"></div>
+    <div id="devices" class="wait"></div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <section>
+    <h2>3. Backup: its own window</h2>
+    <p>Only needed if section 2 says "Blocked". Opens this test in a new window, where MIDI is allowed, and checks it can still talk back to this page.</p>
+    <button id="windowBtn">Open in a new window</button>
+    <div id="window" class="status wait" style="margin-top:8px"></div>
+  </section>
+</main>
+
+<script data-include="lib/sound.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const noteName = (m) => `${NAMES[m % 12]}${Math.floor(m / 12) - 1}`;
+  const set = (id, kind, text) => { $(id).className = 'status ' + kind; $(id).textContent = text; };
+  const isPopup = Boolean(window.opener) && window.opener !== window;
+
+  // 1. Support, and whether this box is allowed to use MIDI at all.
+  const supported = typeof navigator.requestMIDIAccess === 'function';
+  const policy = document.featurePolicy || document.permissionsPolicy;
+  const allowed = policy && policy.allowsFeature ? policy.allowsFeature('midi') : null;
+  if (!supported) {
+    set('support', 'fail', '✗ This browser has no MIDI support. Try Chrome or Edge (Safari has none).');
+  } else if (allowed === false) {
+    set('support', 'fail', '✗ MIDI is supported, but this box is not allowed to use it (blocked by the page around it).');
+  } else {
+    set('support', 'ok', `✓ MIDI is supported${allowed ? ' and allowed here' : ''}.${isPopup ? ' (Running in its own window.)' : ''}`);
+  }
+
+  // 2. Connect and show notes.
+  const held = new Map();
+  $('connectBtn').onclick = async () => {
+    Sound.unlock();
+    if (!supported) return set('connect', 'fail', '✗ No MIDI support in this browser.');
+    set('connect', 'wait', 'Asking for MIDI access…');
+    let access;
+    try {
+      access = await navigator.requestMIDIAccess();
+    } catch (err) {
+      const name = err && err.name;
+      if (name === 'SecurityError') {
+        return set('connect', 'fail', isPopup
+          ? `✗ Blocked in the new window too (${name}).`
+          : `✗ Blocked: the Wix box does not allow MIDI. Try section 3. (${name})`);
+      }
+      if (name === 'NotAllowedError') {
+        return set('connect', 'fail', '✗ Permission was refused. Allow MIDI devices for this site (the icon in the address bar), then press Connect again.');
+      }
+      return set('connect', 'fail', `✗ Could not connect: ${err && err.message}`);
+    }
+    const listInputs = () => {
+      const inputs = [...access.inputs.values()];
+      $('devices').textContent = inputs.length
+        ? 'Devices: ' + inputs.map((i) => i.name).join(', ')
+        : 'No MIDI devices found. Is the keyboard plugged in and switched on?';
+      inputs.forEach((input) => { input.onmidimessage = onMessage; });
+      return inputs.length;
+    };
+    const count = listInputs();
+    access.onstatechange = listInputs;
+    set('connect', 'ok', `✓ Connected${count ? '' : ' (no devices yet)'}. Play some notes: they should appear below and sound.`);
+    report({ type: 'midi', ok: true });
+  };
+
+  function onMessage(event) {
+    const [status, note, velocity] = event.data;
+    const kind = status & 0xf0;
+    if (kind === 0x90 && velocity > 0) {
+      if (held.has(note)) return;
+      held.set(note, Sound.hold(note, 0.2 + (velocity / 127) * 0.35));
+      const chip = document.createElement('span');
+      chip.className = 'note';
+      chip.textContent = `${noteName(note)} (velocity ${velocity})`;
+      $('notes').prepend(chip);
+      while ($('notes').children.length > 12) $('notes').lastChild.remove();
+      report({ type: 'midiNote', note });
+    } else if (kind === 0x80 || (kind === 0x90 && velocity === 0)) {
+      const sound = held.get(note);
+      if (sound) { sound.stop(); held.delete(note); }
+    }
+  }
+
+  // 3. The backup route: this same test in its own window, reporting back.
+  function report(message) {
+    if (isPopup) window.opener.postMessage({ from: 'midi-test-window', ...message }, '*');
+  }
+  window.addEventListener('message', (event) => {
+    const m = event.data;
+    if (!m || m.from !== 'midi-test-window') return;
+    if (m.type === 'hello') set('window', 'ok', '✓ The new window opened and can talk to this page.');
+    if (m.type === 'midi') set('window', 'ok', '✓ MIDI works in the new window, and it can talk back to this page. The backup route works.');
+    if (m.type === 'midiNote') set('window', 'ok', `✓ Backup route works: the new window sent the note ${noteName(m.note)} back here.`);
+  });
+  $('windowBtn').onclick = () => {
+    const w = window.open(location.href, 'midi-test', 'width=760,height=720');
+    set('window', w ? 'wait' : 'fail', w ? 'Opened. In the new window, press Connect MIDI and play a note…' : '✗ The browser blocked the new window (pop-up blocker?).');
+  };
+  if (isPopup) {
+    report({ type: 'hello' });
+    $('windowBtn').disabled = true;
+    set('window', 'ok', 'This is the new window. Press Connect MIDI above and play.');
+  }
+</script>
+</body>
+</html>
