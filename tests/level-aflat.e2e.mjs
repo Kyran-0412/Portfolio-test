@@ -50,6 +50,22 @@ try {
   assert.equal(await S(() => window.__zombie.zombies.length), 0, 'the walker was shot down');
   console.log('✓ WASD moves; holding left click fires the Arpeggiator at the mouse');
 
+  // The Arpeggiator has a 12-note clip, then reloads.
+  await calm(S);
+  await S(() => { window.__zombie.ammo = 12; window.__zombie.reloading = 0; window.__zombie.shots = []; });
+  await page.mouse.move(...at(450, 20));
+  await page.mouse.down(); await page.waitForTimeout(2600); await page.mouse.up();
+  const after = await S(() => ({ ammo: window.__zombie.ammo, reloading: window.__zombie.reloading }));
+  assert.ok(after.reloading > 0 || after.ammo === 12, 'clip ran dry and reloaded');
+  const fired = await S(() => window.__zombie.note);
+  assert.ok(fired <= 16, `no more than a clip and a bit fired in 2.6s (${fired})`);
+  await frame.waitForFunction(() => window.__zombie.reloading === 0 && window.__zombie.ammo === 12, null, { timeout: 3000 });
+  // R reloads early.
+  await page.mouse.down(); await page.waitForTimeout(400); await page.mouse.up();
+  await page.keyboard.press('r');
+  assert.ok(await S(() => window.__zombie.reloading > 0), 'R starts a reload');
+  console.log('✓ Arpeggiator: 12-note clip, automatic reload, R to reload early');
+
   // Zombies hurt you up close; spitters shoot from range.
   await calm(S);
   await S(() => { const s = window.__zombie; s.zombies.push({ type: 'walker', x: s.player.x + 10, y: s.player.y, hp: 3, maxHp: 3, size: 14, attackCool: 0, fireIn: 9, flash: 0, wobble: 0 }); });
