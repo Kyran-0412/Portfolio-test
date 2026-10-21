@@ -136,6 +136,12 @@ const Level = (() => {
       $('piano').hidden = !showPiano;
       Bridge.start();
     },
+    // Reveals the piano partway through a level that started without it.
+    showPiano() {
+      usesPiano = true;
+      $('piano').hidden = false;
+      piano.setEnabled(true);
+    },
     // win({ heart: true }) also reports finding this level's hidden heart.
     win(options = {}) {
       if (finishing) return;

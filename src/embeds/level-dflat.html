@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 8: Chord Progression</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 14px; }
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #title { font-size: 30px; }
+  .piano .piano-name { font-size: 11px; }
+  #subtitle { color: var(--quiet); margin-top: -4px; }
+  .slots { display: flex; gap: 14px; margin: 8px 0 4px; }
+  .slot {
+    width: 104px; height: 112px; border-radius: 12px; border: 2px dashed var(--mid);
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding-top: 8px;
+    background: rgba(54, 45, 64, 0.25); transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  .slot .numeral { font: 600 22px var(--heading); color: var(--glow); letter-spacing: 0.04em; }
+  .slot.over, .slot.target { border-color: var(--glow); background: rgba(154, 127, 224, 0.15); }
+  .slot.playing { box-shadow: 0 0 18px rgba(200, 184, 255, 0.85); border-style: solid; }
+  .slot.right { border-color: #7FD8A4; border-style: solid; }
+  .slot.wrong { border-color: #e7a3b0; animation: shake 0.45s ease-out; }
+  @keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+  .tray { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; min-height: 62px; margin: 4px 0; max-width: 760px; }
+  .card {
+    width: 88px; height: 58px; border-radius: 10px; cursor: grab; user-select: none; touch-action: none;
+    background: linear-gradient(#3b3346, #2a2433); border: 1px solid var(--mid);
+    display: grid; place-items: center; font: 600 24px var(--heading); color: var(--text);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); transition: box-shadow 0.15s, transform 0.15s;
+  }
+  .card:hover, .card.selected { box-shadow: 0 0 14px rgba(200, 184, 255, 0.7); }
+  .card.selected { transform: translateY(-4px); border-color: var(--glow); }
+  .card.dragging { position: fixed; z-index: 10; pointer-events: none; cursor: grabbing; transform: scale(1.06); }
+  .slot .card { cursor: pointer; }
+  .controls { display: flex; gap: 12px; }
+  #feedback { min-height: 1.5em; max-width: 620px; color: var(--glow); margin: 0; }
+  #feedback.bad { color: #e7a3b0; }
+  #piano { margin-top: 4px; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 8, key of D♭: build famous chord progressions. Slots show Roman
+  // numerals, cards show chord names, so you have to know which chord sits on
+  // each degree of D♭ major. Decoys test chord quality (B♭ vs B♭m).
+  // Get one wrong and the piano appears with the D♭ major scale lit up.
+  const CHORDS = { // root (MIDI) and quality
+    'D♭': [61, 'maj'], 'E♭m': [63, 'min'], 'Fm': [65, 'min'], 'G♭': [54, 'maj'], 'A♭': [56, 'maj'], 'B♭m': [58, 'min'],
+    // decoys
+    'B♭': [58, 'maj'], 'C': [60, 'maj'], 'E♭': [63, 'maj'], 'E': [64, 'maj'], 'F': [65, 'maj'],
+  };
+  const ROUNDS = [
+    { numerals: ['I', 'V', 'vi', 'IV'], answer: ['D♭', 'A♭', 'B♭m', 'G♭'], decoys: ['B♭', 'C'],
+      name: 'The pop progression', done: 'I – V – vi – IV: the four chords behind countless pop songs.' },
+    { numerals: ['ii', 'V', 'I'], answer: ['E♭m', 'A♭', 'D♭'], decoys: ['E♭', 'Fm', 'G♭'],
+      name: 'The jazz cadence', done: 'ii – V – I: the move at the heart of jazz. Lower-case numerals mean minor chords.' },
+    { numerals: ['I', 'vi', 'IV', 'V'], answer: ['D♭', 'B♭m', 'G♭', 'A♭'], decoys: ['B♭', 'F', 'E'],
+      name: 'The 50s progression', done: 'I – vi – IV – V: the doo-wop classic. You know D♭ major now.' },
+  ];
+  const DB_MAJOR = [1, 3, 5, 6, 8, 10, 0]; // D♭ E♭ F G♭ A♭ B♭ C
+
+  let round = 0;
+  let slots = [];        // card name in each slot, or null
+  let selected = null;   // a card picked by clicking, waiting for a slot
+  let busy = false;
+  let pianoShown = false;
+  let ui = {};
+  window.__prog = { get slots() { return slots; }, get round() { return round; }, get pianoShown() { return pianoShown; } };
+
+  function chordNotes(name) {
+    const [root, quality] = CHORDS[name];
+    return [root - 12, root, root + (quality === 'min' ? 3 : 4), root + 7];
+  }
+  const playChord = (name, when = 0, length = 0.8) => Sound.chord(chordNotes(name), when, length, 0.42);
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  // ---------- Cards, slots and dragging ----------
+  function makeCard(name) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.textContent = name;
+    card.dataset.chord = name;
+    card.addEventListener('pointerdown', (e) => startDrag(e, card));
+    return card;
+  }
+
+  function startDrag(e, card) {
+    if (busy) return;
+    e.preventDefault();
+    Sound.unlock();
+    playChord(card.dataset.chord, 0, 0.6);
+    const fromSlot = card.parentElement.classList.contains('slot') ? Number(card.parentElement.dataset.index) : null;
+    const startX = e.clientX, startY = e.clientY;
+    const rect = card.getBoundingClientRect();
+    let moved = false;
+    let ghost = null;
+
+    const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+      if (!moved) {
+        moved = true;
+        ghost = card.cloneNode(true);
+        ghost.classList.add('dragging');
+        ghost.style.width = `${rect.width}px`;
+        document.body.appendChild(ghost);
+        card.style.visibility = 'hidden';
+      }
+      ghost.style.left = `${ev.clientX - rect.width / 2}px`;
+      ghost.style.top = `${ev.clientY - rect.height / 2}px`;
+      ui.slots.querySelectorAll('.slot').forEach((s) => s.classList.toggle('over', s === slotAt(ev.clientX, ev.clientY)));
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      ui.slots.querySelectorAll('.slot').forEach((s) => s.classList.remove('over'));
+      if (ghost) ghost.remove();
+      card.style.visibility = '';
+      if (!moved) return clickCard(card, fromSlot); // a click, not a drag
+      const target = slotAt(ev.clientX, ev.clientY);
+      if (target) place(card.dataset.chord, Number(target.dataset.index), fromSlot);
+      else if (fromSlot !== null) place(null, fromSlot); // dragged out of a slot: back to the tray
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  // Clicking works too: click a card, then a slot. Clicking a placed card returns it.
+  function clickCard(card, fromSlot) {
+    if (fromSlot !== null) return place(selected, fromSlot); // swap in the picked card, or empty the slot
+    selected = selected === card.dataset.chord ? null : card.dataset.chord;
+    render();
+  }
+
+  function slotAt(x, y) {
+    return [...ui.slots.querySelectorAll('.slot')].find((s) => {
+      const r = s.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    }) || null;
+  }
+
+  // Puts a chord in a slot (or empties it). A chord can only be in one slot.
+  function place(name, index, fromSlot = null) {
+    if (fromSlot !== null) slots[fromSlot] = null;
+    if (name !== null) {
+      const already = slots.indexOf(name);
+      if (already >= 0) slots[already] = null;
+      if (fromSlot !== null && slots[index] !== null) slots[fromSlot] = slots[index]; // swap
+    }
+    slots[index] = name;
+    selected = null;
+    render();
+  }
+
+  function render() {
+    const r = ROUNDS[round];
+    ui.slots.innerHTML = '';
+    r.numerals.forEach((numeral, i) => {
+      const slot = document.createElement('div');
+      slot.className = 'slot' + (selected && !slots[i] ? ' target' : '');
+      slot.dataset.index = i;
+      slot.innerHTML = `<span class="numeral">${numeral}</span>`;
+      if (slots[i]) slot.appendChild(makeCard(slots[i]));
+      slot.addEventListener('click', (e) => {
+        if (selected && e.target === slot || selected && e.target.classList.contains('numeral')) place(selected, i);
+      });
+      ui.slots.appendChild(slot);
+    });
+    ui.tray.innerHTML = '';
+    for (const name of r.cards) {
+      if (slots.includes(name)) continue;
+      const card = makeCard(name);
+      if (selected === name) card.classList.add('selected');
+      ui.tray.appendChild(card);
+    }
+    ui.play.disabled = busy || slots.some((s) => s === null);
+  }
+
+  // ---------- Rounds ----------
+  function startRound() {
+    const r = ROUNDS[round];
+    r.cards = [...r.answer, ...r.decoys].sort(() => Math.random() - 0.5);
+    slots = r.numerals.map(() => null);
+    selected = null;
+    busy = false;
+    ui.round.textContent = `Round ${round + 1} of ${ROUNDS.length}`;
+    ui.title.textContent = r.name;
+    ui.subtitle.textContent = `Build ${r.numerals.join(' – ')} in D♭ major.`;
+    say(round === 0 ? 'Drag a chord into each slot (or click a chord, then a slot). Picking a chord up plays it.' : '');
+    render();
+  }
+
+  // Plays your progression twice, lighting each slot, then checks it.
+  function playAndCheck() {
+    if (busy || slots.some((s) => s === null)) return;
+    busy = true;
+    render();
+    const r = ROUNDS[round];
+    const beat = 0.85;
+    const order = [...slots, ...slots];
+    order.forEach((name, i) => {
+      playChord(name, i * beat, beat * 0.95);
+      setTimeout(() => {
+        ui.slots.querySelectorAll('.slot').forEach((s, j) => s.classList.toggle('playing', j === i % slots.length));
+      }, i * beat * 1000);
+    });
+    setTimeout(() => {
+      ui.slots.querySelectorAll('.slot').forEach((s) => s.classList.remove('playing'));
+      const wrong = slots.map((name, i) => name !== r.answer[i]);
+      if (wrong.every((w) => !w)) return roundDone();
+      Sound.buzz();
+      ui.slots.querySelectorAll('.slot').forEach((s, i) => { if (wrong[i]) s.classList.add('wrong'); });
+      const count = wrong.filter(Boolean).length;
+      say(`${count} chord${count > 1 ? 's are' : ' is'} in the wrong place.${pianoShown ? '' : ' The piano shows D♭ major to help.'}`, true);
+      if (!pianoShown) revealPiano();
+      setTimeout(() => { busy = false; render(); }, 600);
+    }, order.length * beat * 1000 + 150);
+  }
+
+  // The reference piano: only appears after a wrong answer.
+  // Every key is named (in flats), and keys outside D♭ major are greyed out.
+  function revealPiano() {
+    pianoShown = true;
+    Level.showPiano();
+    Level.piano.setNames(['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B', 'C', 'D♭', 'D', 'E♭', 'E', 'F']);
+    Level.piano.setAllowed(DB_MAJOR);
+  }
+
+  function roundDone() {
+    const r = ROUNDS[round];
+    ui.slots.querySelectorAll('.slot').forEach((s) => s.classList.add('right'));
+    say(r.done);
+    round++;
+    if (round < ROUNDS.length) return setTimeout(startRound, 2600);
+    setTimeout(() => Level.win(), 2800);
+  }
+
+  Level.setup({
+    description: 'Build famous chord progressions in D♭ major from their Roman numerals.',
+    piano: false,
+    start(stage) {
+      stage.innerHTML = `
+        <div class="round" id="round"></div>
+        <h1 id="title"></h1>
+        <p id="subtitle"></p>
+        <div class="slots" id="slots"></div>
+        <div class="tray" id="tray"></div>
+        <div class="controls"><button class="primary" id="playBtn">Play and check</button></div>
+        <p id="feedback"></p>`;
+      ui = {
+        round: stage.querySelector('#round'), title: stage.querySelector('#title'), subtitle: stage.querySelector('#subtitle'),
+        slots: stage.querySelector('#slots'), tray: stage.querySelector('#tray'), play: stage.querySelector('#playBtn'),
+        feedback: stage.querySelector('#feedback'),
+      };
+      ui.play.onclick = () => { ui.play.blur(); playAndCheck(); };
+      startRound();
+    },
+  });
+</script>
+</body>
+</html>

@@ -22,10 +22,22 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-e.html` | Level 5, Melody Memory | Level E page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-b.html` | Level 6, Fix the Mix | Level B page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-fsharp.html` | Level 7, The Tritone (boss fight) | Level F♯ page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-dflat.html` | Level 8, Chord Progression | Level D♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 8: Chord Progression
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-dflat.html` | Level D♭ page's Embed HTML box (replaces the placeholder) |
+
+Drag chord cards (or click a card, then a slot) into slots labelled with Roman numerals. A wrong
+answer reveals a reference piano with D♭ major marked.
 
 ## Smaller doors, and Tritone tweaks
 
