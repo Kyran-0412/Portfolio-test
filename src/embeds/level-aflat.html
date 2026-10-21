@@ -56,26 +56,26 @@
       desc: 'Quick little notes that ripple up the A♭ arpeggio. 12 per clip, then a short reload.',
       rate: 0.16, damage: 1, speed: 450, size: 5, pierce: 0, clip: 12, reload: 1.6 },
     bass: { name: 'Sub Bass', icon: '〰', tag: 'Heavy, piercing',
-      desc: 'A slow, wide wave of bass that rolls through every zombie in its path.',
-      rate: 0.8, damage: 4, speed: 300, size: 24, pierce: 99 },
+      desc: 'A slow, wide wave of bass that rolls through every zombie in its path. 4 per clip.',
+      rate: 0.8, damage: 4, speed: 300, size: 24, pierce: 99, clip: 4, reload: 2 },
     mic: { name: 'Mic Swing', icon: '🎤', tag: 'Melee',
       desc: 'Swing your mic on its cable in a wide arc. Big damage and knockback, short reach.',
       rate: 0.42, damage: 5, reach: 80, arc: 1.7 },
   };
 
   const ZOMBIES = {
-    walker: { hp: 3, speed: 52, size: 14, damage: 10, body: '#7d7a8c', eye: '#ff8fa6' },
-    brute: { hp: 14, speed: 36, size: 23, damage: 22, body: '#4a3566', eye: '#ff5d7a' },
-    spitter: { hp: 5, speed: 48, size: 14, damage: 10, body: '#3f7a6e', eye: '#b9fff0', range: 230, fire: 2.4 },
-    runner: { hp: 2, speed: 120, size: 11, damage: 8, body: '#a8566a', eye: '#ffe0e6' },
+    walker: { hp: 4, speed: 60, size: 14, damage: 10, body: '#7d7a8c', eye: '#ff8fa6' },
+    brute: { hp: 18, speed: 42, size: 23, damage: 22, body: '#4a3566', eye: '#ff5d7a' },
+    spitter: { hp: 6, speed: 55, size: 14, damage: 10, body: '#3f7a6e', eye: '#b9fff0', range: 230, fire: 2.2 },
+    runner: { hp: 2, speed: 138, size: 11, damage: 8, body: '#a8566a', eye: '#ffe0e6' },
   };
 
   const WAVES = [
-    { walker: 8, gap: 1.1 },
-    { walker: 12, brute: 2, gap: 0.95 },
-    { walker: 12, brute: 3, spitter: 3, gap: 0.85 },
-    { walker: 14, brute: 3, spitter: 4, runner: 5, gap: 0.75 },
-    { walker: 16, brute: 5, spitter: 5, runner: 8, gap: 0.6 },
+    { walker: 11, gap: 0.9 },
+    { walker: 16, brute: 3, gap: 0.8 },
+    { walker: 16, brute: 4, spitter: 4, gap: 0.7 },
+    { walker: 19, brute: 4, spitter: 5, runner: 7, gap: 0.6 },
+    { walker: 22, brute: 7, spitter: 7, runner: 11, gap: 0.5 },
   ];
   const SPAWNERS = [[60, 92], [W - 60, 92], [60, H - 58], [W - 60, H - 58]]; // clear of the HUD at the top
 
@@ -90,6 +90,7 @@
     { id: 'extra', name: 'Harmony', desc: 'Fire one more note each shot', only: 'arp', apply: (s) => { s.mods.extra += 1; } },
     { id: 'pierce', name: 'Ring Out', desc: 'Notes pass through one more zombie', only: 'arp', apply: (s) => { s.mods.pierce += 1; } },
     { id: 'clip', name: 'Bigger Clip', desc: '+6 notes per clip', only: 'arp', apply: (s) => { s.mods.clip += 6; s.ammo = WEAPONS.arp.clip + s.mods.clip; } },
+    { id: 'quickreload', name: 'Quick Reload', desc: 'Reload 30% faster', only: ['arp', 'bass'], apply: (s) => { s.mods.reload *= 0.7; } },
     { id: 'wide', name: 'Wider Wave', desc: '+40% wave size', only: 'bass', apply: (s) => { s.mods.size *= 1.4; } },
     { id: 'reach', name: 'Longer Cable', desc: '+30% swing reach', only: 'mic', apply: (s) => { s.mods.reach *= 1.3; } },
   ];
@@ -162,7 +163,7 @@
     S = {
       mode: 'choose', weapon: null, wave: 0, time: 0,
       player: { x: W / 2, y: H / 2, hp: 100, maxHp: 100, speed: 200, regen: 0, aim: -Math.PI / 2 },
-      mods: { damage: 1, rate: 1, extra: 0, pierce: 0, size: 1, reach: 1, clip: 0 },
+      mods: { damage: 1, rate: 1, extra: 0, pierce: 0, size: 1, reach: 1, clip: 0, reload: 1 },
       ammo: 0, reloading: 0, // the Arpeggiator's clip
       zombies: [], shots: [], spits: [], sparks: [], texts: [], swings: [],
       queue: [], spawnIn: 0, fireCool: 0, note: 0, shake: 0, hurtFlash: 0, banner: null, spawnerGlow: [0, 0, 0, 0],
@@ -208,7 +209,7 @@
   const clipSize = () => (WEAPONS[S.weapon].clip ? WEAPONS[S.weapon].clip + S.mods.clip : Infinity);
   function reload() {
     if (!WEAPONS[S.weapon].clip || S.reloading > 0 || S.ammo === clipSize()) return;
-    S.reloading = WEAPONS[S.weapon].reload;
+    S.reloading = WEAPONS[S.weapon].reload * S.mods.reload;
     Sound.whoosh();
   }
   function attack() {
@@ -285,7 +286,7 @@
     Sound.chord([56, 60, 63, 68], 0, 1.4, 0.4);
     ui.upgradeTitle.textContent = `Wave ${S.wave + 1} cleared`;
     ui.upgrades.innerHTML = '';
-    const options = UPGRADES.filter((u) => !u.only || u.only === S.weapon).sort(() => Math.random() - 0.5).slice(0, 3);
+    const options = UPGRADES.filter((u) => !u.only || [].concat(u.only).includes(S.weapon)).sort(() => Math.random() - 0.5).slice(0, 3);
     for (const u of options) {
       ui.upgrades.appendChild(choiceCard('⬆', u.name, u.desc, '', () => {
         u.apply(S);
@@ -540,7 +541,7 @@
 
   function drawPlayer(p) {
     if (S.reloading > 0) {
-      const k = 1 - S.reloading / WEAPONS[S.weapon].reload;
+      const k = 1 - S.reloading / (WEAPONS[S.weapon].reload * S.mods.reload);
       ctx.strokeStyle = 'rgba(200, 184, 255, 0.8)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(p.x, p.y, 24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
     }
@@ -581,10 +582,11 @@
       const size = clipSize();
       for (let i = 0; i < size; i++) {
         ctx.fillStyle = i < S.ammo && S.reloading <= 0 ? '#C8B8FF' : '#2c2934';
-        ctx.beginPath(); ctx.arc(80 + i * 11, 40, 3.5, 0, Math.PI * 2); ctx.fill();
+        const big = size <= 6; // the bass's few big waves get bigger pips
+        ctx.beginPath(); ctx.arc(80 + i * (big ? 16 : 11), 40, big ? 5 : 3.5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.textAlign = 'left'; ctx.fillStyle = '#9A93A3'; ctx.font = '500 11px Oswald, sans-serif';
-      ctx.fillText(S.reloading > 0 ? 'RELOADING' : 'NOTES', 16, 44);
+      ctx.fillText(S.reloading > 0 ? 'RELOADING' : S.weapon === 'bass' ? 'WAVES' : 'NOTES', 16, 44);
     }
     if (S.weapon) {
       ctx.textAlign = 'right';

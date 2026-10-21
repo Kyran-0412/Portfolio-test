@@ -128,6 +128,14 @@ try {
   await frame.waitForFunction(() => window.__zombie.zombies.length === 0, null, { timeout: 3000 });
   console.log('✓ Sub Bass rolls through a whole line of zombies');
 
+  // Sub Bass has a 4-wave clip.
+  await calm(S);
+  await S(() => { window.__zombie.ammo = 4; window.__zombie.reloading = 0; window.__zombie.fireCool = 0; });
+  await page.mouse.move(...at(450, 20));
+  await page.mouse.down(); await page.waitForTimeout(3300); await page.mouse.up();
+  assert.ok(await S(() => window.__zombie.reloading > 0 || window.__zombie.ammo === 4), 'the clip ran dry and reloads');
+  console.log('✓ Sub Bass: 4-wave clip, then a reload');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Level 9 browser checks passed.');
 } finally {
