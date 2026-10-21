@@ -37,7 +37,7 @@ try {
   });
   // Pressing a key with nothing on the line breaks the streak and costs a bit of crowd.
   await page.keyboard.press('KeyJ');
-  assert.equal(await rush(() => window.__rush.meter), 48);
+  assert.equal(await rush(() => window.__rush.meter), 59);
 
   // Hit the first verse notes properly with real key presses, on time.
   const keys = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
@@ -63,7 +63,7 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lbb-failed.png` });
   await game.locator('#retryBtn').click();
   assert.equal(await rush(() => window.__rush.state), 'playing');
-  assert.equal(await rush(() => window.__rush.meter), 50, 'crowd back to half');
+  assert.equal(await rush(() => window.__rush.meter), 60, 'crowd back to the start level');
   const t = await rush(() => window.__rush.time);
   const verseStart = await rush(() => window.__rush.sections[1].start);
   assert.ok(t < verseStart, 'retry starts with a run-up bar before the verse');
