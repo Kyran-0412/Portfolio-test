@@ -61,7 +61,7 @@
   };
 
   if (LEVELS.includes(page.replace('level-', '')) && page.startsWith('level-')) {
-    const built = { 'level-c': 'level-c.html', 'level-g': 'level-g.html', 'level-d': 'level-d.html', 'level-a': 'level-a.html', 'level-e': 'level-e.html', 'level-b': 'level-b.html', 'level-fsharp': 'level-fsharp.html', 'level-dflat': 'level-dflat.html', 'level-aflat': 'level-aflat.html' };
+    const built = { 'level-c': 'level-c.html', 'level-g': 'level-g.html', 'level-d': 'level-d.html', 'level-a': 'level-a.html', 'level-e': 'level-e.html', 'level-b': 'level-b.html', 'level-fsharp': 'level-fsharp.html', 'level-dflat': 'level-dflat.html', 'level-aflat': 'level-aflat.html', 'level-eflat': 'level-eflat.html' };
     // &embed=… forces a particular embed (tests use it to load the placeholder).
     const forced = new URLSearchParams(location.search).get('embed');
     frame('gameEmbed', [forced || built[page] || 'level-placeholder.html', 980, 640]);

@@ -24,10 +24,25 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-fsharp.html` | Level 7, The Tritone (boss fight) | Level F♯ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-dflat.html` | Level 8, Chord Progression | Level D♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-aflat.html` | Level 9, Survival Waves (zombies) | Level A♭ page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-eflat.html` | Level 10, Beat Rebuild | Level E♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 10: Beat Rebuild
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-eflat.html` | Level E♭ page's Embed HTML box (replaces the placeholder) |
+
+Deck A plays a beat; rebuild it on Deck B's 16-step sequencer (kick, snare, hi-hat, clap) over four
+beats. The crossfader switches between A, B or both, and S solos a row on both decks. A wrong check
+says how many steps are off; from the second try it also marks which rows. After the fourth beat,
+Deck A changes tempo and you match it with Deck B's tempo slider (within 1 BPM). To drop that
+finale, set `BEATMATCH = false` near the top of `src/embeds/level-eflat.html` and rebuild.
 
 ## Level 9: Survival Waves
 

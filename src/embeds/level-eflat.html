@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 10: Beat Rebuild</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 10px; }
+  .top { display: flex; align-items: baseline; gap: 14px; }
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #problem { font: 600 24px var(--heading); letter-spacing: 0.02em; }
+
+  /* The two decks and the crossfader between them. */
+  .decks {
+    display: flex; align-items: stretch; gap: 14px; padding: 12px 16px; margin: 4px 0;
+    background: linear-gradient(#24212b, #1a1820); border: 1px solid var(--accent); border-radius: 12px;
+  }
+  .deck { width: 230px; display: flex; align-items: center; gap: 12px; }
+  .deck.b { flex-direction: row-reverse; text-align: right; }
+  .platter {
+    width: 86px; height: 86px; border-radius: 50%; flex: none; position: relative;
+    background: repeating-radial-gradient(circle, #141318 0 3px, #1d1b22 3px 5px);
+    border: 2px solid #2f2b37; box-shadow: inset 0 0 0 1px #0c0b0f;
+  }
+  .platter::before {
+    content: ''; position: absolute; inset: 31px; border-radius: 50%;
+    background: radial-gradient(circle, #181818 0 3px, var(--mid) 4px);
+  }
+  .platter::after {
+    content: ''; position: absolute; left: 50%; top: 5px; width: 3px; height: 14px; margin-left: -1.5px;
+    background: var(--glow); border-radius: 2px; opacity: 0.8;
+  }
+  .platter.spin { animation: spin var(--turn, 1.8s) linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .deck-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .deck.b .deck-info { align-items: flex-end; }
+  .deck-name { font: 600 15px var(--heading); letter-spacing: 0.12em; color: var(--glow); }
+  .deck-sub { font: 500 11px var(--heading); letter-spacing: 0.12em; text-transform: uppercase; color: var(--quiet); }
+  .lights { display: flex; gap: 5px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #121116; border: 1px solid #2c2934; transition: background 0.05s, box-shadow 0.05s; }
+  .lights i.on { background: var(--glow); box-shadow: 0 0 8px var(--bright); }
+  .tempo { display: none; flex-direction: column; gap: 2px; width: 130px; }
+  .tempo.show { display: flex; }
+  .tempo input { width: 100%; accent-color: var(--bright); margin: 0; cursor: pointer; }
+  .bpm { font: 600 13px var(--heading); color: var(--text); letter-spacing: 0.06em; }
+  .xfade { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 170px; }
+  .xfade span { font: 500 10px var(--heading); letter-spacing: 0.14em; color: var(--quiet); }
+  .xfade .ends { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 6px; }
+  .xfade .ends button { padding: 2px 8px; font: 600 12px var(--heading); }
+  .xfade input { flex: 1; accent-color: var(--bright); margin: 0; cursor: pointer; }
+
+  /* The step sequencer. */
+  .seq { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; background: #1e1c24; border: 1px solid #2c2934; border-radius: 10px; }
+  .seq-row { display: flex; align-items: center; gap: 8px; }
+  .seq-row.locked { opacity: 0.28; }
+  .seq-row.locked .cell { cursor: default; }
+  .row-name { width: 62px; font: 600 13px var(--heading); letter-spacing: 0.1em; color: var(--glow); text-align: right; transition: color 0.2s; }
+  .seq-row.off .row-name { color: #ff8fa6; }
+  .seq-row.off .row-name::after { content: ' •'; }
+  .solo { padding: 1px 7px; font: 600 11px var(--heading); }
+  .solo.on { background: #d9c27a; border-color: #f0dfa4; color: #181818; }
+  .cells { display: flex; gap: 4px; }
+  .cell {
+    width: 30px; height: 30px; padding: 0; border-radius: 5px; cursor: pointer;
+    background: #2a2731; border: 1px solid #36323f; box-shadow: none;
+  }
+  .cell:hover { background: #352f40; border-color: var(--accent); box-shadow: none; }
+  .cell.beat { background: #322d3b; }
+  .cell:nth-child(4n) { margin-right: 6px; }
+  .cell.on { background: linear-gradient(#c8b8ff, #9a7fe0); border-color: var(--glow); }
+  .cell.now { outline: 2px solid rgba(200, 184, 255, 0.55); outline-offset: 1px; }
+  .cell.on.now { box-shadow: 0 0 12px var(--bright); }
+  .controls { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+  #feedback { min-height: 2.8em; color: var(--glow); margin: 0; max-width: 640px; }
+  #feedback.bad { color: #e7a3b0; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 10, key of E♭: Deck A plays a beat, and you rebuild it on Deck B's
+  // step sequencer. The crossfader lets you hear A, B or both together.
+  // Set BEATMATCH to false to end the level after the last beat instead.
+  const BEATMATCH = true;
+
+  const ROWS = ['kick', 'snare', 'hat', 'clap'];
+  const NAMES = { kick: 'Kick', snare: 'Snare', hat: 'Hi-hat', clap: 'Clap' };
+  const BPM = 110;
+  // x = a hit. Rows a round doesn't list stay locked and silent.
+  const ROUNDS = [
+    { problem: 'Kick and snare.', beat: { kick: 'x...x...x...x...', snare: '....x.......x...' } },
+    { problem: 'Now the hi-hats.', prefill: true,
+      beat: { kick: 'x...x...x...x...', snare: '....x.......x...', hat: '..x...x...x...x.' } },
+    { problem: 'A broken beat: the kick moves.',
+      beat: { kick: 'x.....x...x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' } },
+    { problem: 'Everything, plus a clap.',
+      beat: { kick: 'x..x....x.x.....', snare: '....x.......x..x', hat: 'x.x.x.x.x.x.x.xx', clap: '....x.......x...' } },
+  ];
+  // Deck A's new tempo in the beatmatch: one of these, picked at random.
+  const MATCH_TEMPOS = [98, 102, 118, 122, 126];
+  const MATCH_WITHIN = 1; // BPM either side that counts as matched
+
+  const grid = {};
+  ROWS.forEach((r) => { grid[r] = Array(16).fill(false); });
+  const solo = {};
+  let round = 0, tries = 0, matching = false, ui = {};
+  let tempoA = BPM, tempoB = BPM, xfade = 0.5;
+  const target = () => ROUNDS[Math.min(round, ROUNDS.length - 1)].beat;
+  const hits = (pattern, s) => !!pattern && pattern[s] === 'x';
+
+  window.__beat = {
+    grid, get round() { return round; }, get matching() { return matching; },
+    get tempoA() { return tempoA; }, get tempoB() { return tempoB; }, rounds: ROUNDS,
+  };
+
+  // ---------- Audio: two decks into a crossfader ----------
+  let ctx = null, master, decks = {}, scheduler = null;
+  let aNext = 0, aStep = 0, bNext = 0, bStep = 16, visuals = [];
+
+  function buildAudio() {
+    ctx = Sound.unlock();
+    master = ctx.createGain();
+    master.gain.value = 0.75;
+    const comp = ctx.createDynamicsCompressor();
+    master.connect(comp).connect(ctx.destination);
+    ['a', 'b'].forEach((d) => {
+      const bus = ctx.createGain();
+      bus.connect(master);
+      const rows = {};
+      ROWS.forEach((r) => { rows[r] = ctx.createGain(); rows[r].connect(bus); });
+      decks[d] = { bus, rows };
+    });
+    applyMix();
+  }
+
+  function applyMix() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    decks.a.bus.gain.setTargetAtTime(Math.cos(xfade * Math.PI / 2), t, 0.02);
+    decks.b.bus.gain.setTargetAtTime(Math.sin(xfade * Math.PI / 2), t, 0.02);
+    const soloing = ROWS.some((r) => solo[r]);
+    ['a', 'b'].forEach((d) => ROWS.forEach((r) => {
+      decks[d].rows[r].gain.setTargetAtTime(!soloing || solo[r] ? 1 : 0, t, 0.02);
+    }));
+  }
+
+  function env(g, t, peak, decay) {
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  }
+  function noiseHit(dest, t, peak, decay, type, freq, q = 1) {
+    const len = Math.ceil(ctx.sampleRate * (decay + 0.02));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = buf; f.type = type; f.frequency.value = freq; f.Q.value = q;
+    src.connect(f).connect(g).connect(dest);
+    env(g, t, peak, decay);
+    src.start(t);
+  }
+  const DRUMS = {
+    kick(dest, t) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(150, t);
+      o.frequency.exponentialRampToValueAtTime(42, t + 0.22);
+      o.connect(g).connect(dest);
+      env(g, t, 0.95, 0.32);
+      o.start(t); o.stop(t + 0.36);
+    },
+    snare(dest, t) {
+      noiseHit(dest, t, 0.42, 0.18, 'bandpass', 1900, 0.8);
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = 185;
+      o.connect(g).connect(dest);
+      env(g, t, 0.3, 0.1);
+      o.start(t); o.stop(t + 0.12);
+    },
+    hat(dest, t) { noiseHit(dest, t, 0.16, 0.045, 'highpass', 8000); },
+    clap(dest, t) {
+      [0, 0.011, 0.022].forEach((d) => noiseHit(dest, t + d, 0.32, 0.03, 'bandpass', 1300, 1.4));
+      noiseHit(dest, t + 0.03, 0.25, 0.16, 'bandpass', 1200, 1.2);
+    },
+  };
+
+  const stepLength = (bpm) => 60 / bpm / 4;
+
+  function playA(s, t) {
+    const beat = target();
+    ROWS.forEach((r) => { if (hits(beat[r], s)) DRUMS[r](decks.a.rows[r], t); });
+    visuals.push({ t, deck: 'a', s });
+  }
+  function playB(s, t) {
+    const live = ROUNDS[Math.min(round, ROUNDS.length - 1)].beat;
+    ROWS.forEach((r) => { if (live[r] && grid[r][s]) DRUMS[r](decks.b.rows[r], t); });
+    visuals.push({ t, deck: 'b', s });
+  }
+
+  // Deck A keeps time. Deck B restarts its bar on each of A's downbeats, so
+  // at the wrong tempo B either gets cut off or runs out early.
+  function tick() {
+    const horizon = ctx.currentTime + 0.12;
+    for (;;) {
+      const bReady = bStep < 16;
+      if (aNext <= horizon && (!bReady || aNext <= bNext)) {
+        if (aStep === 0) { bStep = 0; bNext = aNext; }
+        playA(aStep, aNext);
+        aNext += stepLength(tempoA);
+        aStep = (aStep + 1) % 16;
+      } else if (bReady && bNext <= horizon) {
+        playB(bStep, bNext);
+        bNext += stepLength(tempoB);
+        bStep++;
+      } else break;
+    }
+  }
+
+  function startLoop() {
+    if (!ctx) buildAudio();
+    if (scheduler) return;
+    aStep = 0; bStep = 16; visuals = [];
+    aNext = ctx.currentTime + 0.08;
+    tick();
+    scheduler = setInterval(tick, 25);
+    ui.playBtn.textContent = '■ Stop';
+    spin();
+    requestAnimationFrame(drawPlayheads);
+  }
+  function stopLoop() {
+    clearInterval(scheduler);
+    scheduler = null;
+    if (ui.playBtn) ui.playBtn.textContent = '▶ Play';
+    spin();
+    clearPlayheads();
+  }
+
+  function spin() {
+    // One turn per bar, like a record at that tempo.
+    [['a', tempoA], ['b', tempoB]].forEach(([d, bpm]) => {
+      ui[d].platter.classList.toggle('spin', !!scheduler);
+      ui[d].platter.style.setProperty('--turn', `${(240 / bpm).toFixed(3)}s`);
+    });
+  }
+
+  function clearPlayheads() {
+    ui.seq.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now'));
+    ['a', 'b'].forEach((d) => ui[d].lights.forEach((l) => l.classList.remove('on')));
+  }
+
+  function drawPlayheads() {
+    if (!scheduler) return;
+    const now = ctx.currentTime;
+    while (visuals.length && visuals[0].t <= now) {
+      const { deck, s } = visuals.shift();
+      if (s % 4 === 0) ui[deck].lights.forEach((l, i) => l.classList.toggle('on', i === s / 4));
+      else if (s % 4 === 1) ui[deck].lights.forEach((l) => l.classList.remove('on'));
+      if (deck === 'b') {
+        ui.seq.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now'));
+        ui.seq.querySelectorAll(`.cell[data-step="${s}"]`).forEach((c) => c.classList.add('now'));
+      }
+    }
+    requestAnimationFrame(drawPlayheads);
+  }
+
+  // ---------- The sequencer ----------
+  function drawSeq() {
+    ui.seq.innerHTML = '';
+    ROWS.forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'seq-row';
+      row.dataset.row = r;
+      row.innerHTML = `<span class="row-name">${NAMES[r].toUpperCase()}</span>
+        <button class="solo" title="Solo this row on both decks">S</button><div class="cells"></div>`;
+      const cells = row.querySelector('.cells');
+      for (let s = 0; s < 16; s++) {
+        const cell = document.createElement('button');
+        cell.className = 'cell' + (s % 4 === 0 ? ' beat' : '');
+        cell.dataset.row = r;
+        cell.dataset.step = s;
+        cell.setAttribute('aria-label', `${NAMES[r]} step ${s + 1}`);
+        cell.onclick = () => {
+          cell.blur();
+          if (row.classList.contains('locked')) return;
+          grid[r][s] = !grid[r][s];
+          row.classList.remove('off');
+          refresh();
+        };
+        cells.appendChild(cell);
+      }
+      const soloBtn = row.querySelector('.solo');
+      soloBtn.onclick = () => { soloBtn.blur(); solo[r] = !solo[r]; refresh(); applyMix(); };
+      ui.seq.appendChild(row);
+    });
+  }
+
+  function refresh() {
+    const beat = target();
+    ROWS.forEach((r) => {
+      const row = ui.seq.querySelector(`[data-row="${r}"]`);
+      row.classList.toggle('locked', !beat[r] || matching);
+      row.querySelector('.solo').classList.toggle('on', !!solo[r]);
+      row.querySelectorAll('.cell').forEach((c, s) => c.classList.toggle('on', grid[r][s]));
+    });
+  }
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  function startRound() {
+    const r = ROUNDS[round];
+    tries = 0;
+    const previous = ROUNDS[round - 1];
+    ROWS.forEach((row) => {
+      grid[row] = Array.from({ length: 16 }, (_, s) => !!(r.prefill && previous && hits(previous.beat[row], s)));
+    });
+    ui.seq.querySelectorAll('.seq-row').forEach((row) => row.classList.remove('off'));
+    ui.round.textContent = `Beat ${round + 1} of ${ROUNDS.length}`;
+    ui.problem.textContent = r.problem;
+    ui.check.disabled = false;
+    ui.check.textContent = 'Check the beat';
+    refresh();
+    say(round === 0
+      ? 'Press Play. Deck A plays the beat to copy. Click steps to rebuild it on Deck B, and use the crossfader to compare.'
+      : r.prefill ? 'Your kick and snare are already in. Add what’s new.' : 'Press Check when the decks sound the same.');
+  }
+
+  function wrongRows() {
+    const beat = target();
+    return ROWS.filter((r) => beat[r]).map((r) => ({
+      r, off: grid[r].filter((on, s) => on !== hits(beat[r], s)).length,
+    })).filter((x) => x.off > 0);
+  }
+
+  function checkBeat() {
+    const wrong = wrongRows();
+    if (wrong.length) {
+      tries++;
+      Sound.buzz();
+      const total = wrong.reduce((n, x) => n + x.off, 0);
+      const steps = `${total} step${total === 1 ? ' is' : 's are'} off`;
+      if (tries < 2) return say(`Not yet: ${steps}. Try soloing a row to hear it on its own.`, true);
+      ui.seq.querySelectorAll('.seq-row').forEach((row) => {
+        row.classList.toggle('off', wrong.some((x) => x.r === row.dataset.row));
+      });
+      const names = wrong.map((x) => NAMES[x.r].toLowerCase());
+      const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+      return say(`Not yet: ${steps}, in the ${list} row${names.length > 1 ? 's' : ''}.`, true);
+    }
+    ui.check.disabled = true;
+    Sound.chord([63, 67, 70, 75], 0, 1.2, 0.3);
+    round++;
+    if (round < ROUNDS.length) {
+      say('Locked in.');
+      return setTimeout(startRound, 1800);
+    }
+    if (!BEATMATCH) return finish('That’s the beat rebuilt.');
+    say('That’s the beat. One more thing…');
+    setTimeout(startMatch, 1800);
+  }
+
+  // ---------- The beatmatch ----------
+  function startMatch() {
+    matching = true;
+    tries = 0;
+    tempoA = MATCH_TEMPOS[Math.floor(Math.random() * MATCH_TEMPOS.length)];
+    tempoB = BPM;
+    round = ROUNDS.length - 1; // keep the last beat on both decks
+    ui.round.textContent = 'Beatmatch';
+    ui.problem.textContent = 'Deck A changed tempo. Match it.';
+    ui.a.sub.textContent = '??? BPM';
+    ui.tempo.classList.add('show');
+    ui.tempoInput.value = tempoB;
+    ui.setFade(0.5); // hear both decks drift
+    showTempo();
+    ui.check.disabled = false;
+    ui.check.textContent = 'Check the sync';
+    refresh();
+    spin();
+    say('Move Deck B’s tempo until the two decks stop drifting apart. Watch the beat lights.');
+  }
+
+  function showTempo() {
+    ui.bpm.textContent = `${tempoB.toFixed(1)} BPM`;
+    spin();
+  }
+
+  function checkMatch() {
+    const diff = tempoB - tempoA;
+    if (Math.abs(diff) > MATCH_WITHIN) {
+      tries++;
+      Sound.buzz();
+      return say(tries < 2 ? 'Not in sync yet. Listen for the kicks flamming against each other.'
+        : `Not in sync yet: Deck B is running ${diff > 0 ? 'faster' : 'slower'} than Deck A.`, true);
+    }
+    ui.check.disabled = true;
+    Sound.chord([63, 67, 70, 75], 0, 1.2, 0.3);
+    finish('Beatmatched. That’s a DJ’s first skill.');
+  }
+
+  function finish(text) {
+    say(text);
+    setTimeout(() => { stopLoop(); Level.win(); }, 2200);
+  }
+
+  Level.setup({
+    description: 'A beat in E♭ on Deck A. Rebuild it by ear on Deck B.',
+    piano: false,
+    start(stage) {
+      stage.innerHTML = `
+        <div class="top"><span class="round" id="round"></span><span id="problem"></span></div>
+        <div class="decks">
+          <div class="deck a"><div class="platter" id="platterA"></div>
+            <div class="deck-info"><span class="deck-name">DECK A</span><span class="deck-sub" id="subA">The beat</span>
+              <div class="lights" id="lightsA"><i></i><i></i><i></i><i></i></div></div></div>
+          <div class="xfade"><span>CROSSFADER</span>
+            <div class="ends"><button id="toA" title="Hear only Deck A">A</button>
+              <input type="range" id="xfade" min="0" max="1" step="0.01" value="0.5" aria-label="Crossfader">
+              <button id="toB" title="Hear only Deck B">B</button></div>
+            <span id="xfadeLabel">BOTH</span></div>
+          <div class="deck b"><div class="platter" id="platterB"></div>
+            <div class="deck-info"><span class="deck-name">DECK B</span><span class="deck-sub">Yours</span>
+              <div class="lights" id="lightsB"><i></i><i></i><i></i><i></i></div>
+              <label class="tempo" id="tempo"><span class="bpm" id="bpm"></span>
+                <input type="range" id="tempoInput" min="90" max="135" step="0.5" aria-label="Deck B tempo"></label></div></div>
+        </div>
+        <div class="seq" id="seq"></div>
+        <div class="controls"><button id="playBtn">▶ Play</button><button class="primary" id="checkBtn">Check the beat</button></div>
+        <p id="feedback"></p>`;
+      const $ = (id) => stage.querySelector('#' + id);
+      ui = {
+        round: $('round'), problem: $('problem'), seq: $('seq'), playBtn: $('playBtn'), check: $('checkBtn'),
+        feedback: $('feedback'), tempo: $('tempo'), tempoInput: $('tempoInput'), bpm: $('bpm'),
+        a: { platter: $('platterA'), lights: [...$('lightsA').children], sub: $('subA') },
+        b: { platter: $('platterB'), lights: [...$('lightsB').children] },
+      };
+      ui.playBtn.onclick = () => { ui.playBtn.blur(); scheduler ? stopLoop() : startLoop(); };
+      ui.check.onclick = () => { ui.check.blur(); matching ? checkMatch() : checkBeat(); };
+      const setFade = (v) => {
+        xfade = v;
+        $('xfade').value = v;
+        $('xfadeLabel').textContent = v < 0.15 ? 'DECK A' : v > 0.85 ? 'DECK B' : 'BOTH';
+        applyMix();
+      };
+      ui.setFade = setFade;
+      $('xfade').oninput = (e) => setFade(Number(e.target.value));
+      $('toA').onclick = (e) => { e.target.blur(); setFade(0); };
+      $('toB').onclick = (e) => { e.target.blur(); setFade(1); };
+      ui.tempoInput.oninput = () => { tempoB = Number(ui.tempoInput.value); showTempo(); };
+      drawSeq();
+      startRound();
+      spin();
+    },
+  });
+</script>
+</body>
+</html>
