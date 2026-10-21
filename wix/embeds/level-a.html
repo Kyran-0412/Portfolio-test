@@ -782,7 +782,7 @@ const Level = (() => {
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
   const CUT_DAMAGE = 14;      // playing the held chord's missing note
-  let thirdFound = false;     // stays found if you retry phase 3
+  let thirdFound = false;     // found in phase 3; reset when the fight restarts
   const name = (midi) => Piano.noteName(midi);
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -804,7 +804,7 @@ const Level = (() => {
               <span><kbd>←</kbd> <kbd>→</kbd></span><span>Move</span>
               <span><kbd>Space</kbd></span><span>Dash (briefly untouchable)</span>
               <span><kbd>A</kbd></span><span>Fire the root, A. More notes unlock as the fight goes on</span>
-              <span>Hearts</span><span>Each hit takes one. Lose them all and you retry the phase</span>
+              <span>Hearts</span><span>Each hit takes one. Lose them all and the fight starts again</span>
               <span>Your volume</span><span>Every attack adds to it. Spam and you clip (stunned for a moment)</span>
               <span>Same note</span><span>Fire the note coming at you to cancel it (only notes you have)</span>
               <span>Ear defenders</span><span>Catch them to block hits for a few seconds</span>
@@ -1122,10 +1122,10 @@ const Level = (() => {
     setTimeout(() => { if (S && S.running && S.player === p) Level.piano.setEnabled(true); }, CLIP_STUN * 1000);
   }
 
+  // Out of hearts: the whole fight starts again.
   function lose() {
-    const phase = S.phase;
-    finish('Out of hearts', 'Feedback got the better of you. Try again from this phase.', [
-      ['Retry', () => begin(phase), true],
+    finish('Out of hearts', 'Feedback got the better of you. The fight starts again from the top.', [
+      ['Try again', () => { thirdFound = false; begin(0); }, true],
     ]);
   }
 

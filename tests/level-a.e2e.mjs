@@ -137,11 +137,12 @@ try {
   await frame.waitForFunction(() => window.__boss.hearts === 1, null, { timeout: 2000 });
   await hitMe();
   await game.locator('#endCard.show', { hasText: 'Out of hearts' }).waitFor({ timeout: 2000 });
-  await game.locator('#endButtons button', { hasText: 'Retry' }).click();
-  assert.equal(await S(() => window.__boss.boss.hp), 30, 'retry restarts phase 3');
-  assert.equal(await S(() => window.__boss.moment), null, 'the third stays unlocked on retry');
-  assert.equal(await S(() => window.__boss.hearts), 3, 'retry gives full hearts');
-  console.log('✓ each hit takes a heart; losing all three loses the phase; retry keeps the third');
+  await game.locator('#endButtons button', { hasText: 'Try again' }).click();
+  assert.equal(await S(() => window.__boss.boss.hp), 100, 'the whole fight restarts');
+  assert.equal(await S(() => window.__boss.phase), 0);
+  assert.equal(await S(() => window.__boss.hearts), 3, 'full hearts');
+  assert.equal(await game.locator('.piano-key.locked').count(), 6, 'back to the root only');
+  console.log('✓ each hit takes a heart; losing all three restarts the whole fight');
 
   // Winning
   await calm();
