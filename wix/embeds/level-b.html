@@ -1,0 +1,1058 @@
+<!-- Built from src/embeds/level-b.html. Paste this whole file into a Wix Embed HTML box (Code). -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 6: Fix the Mix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* lib/theme.css */
+/* Site palette and fonts (Oswald headings, Inter text). */
+:root {
+  --bg: #181818;
+  --panel: #242424;
+  --accent: #362D40;
+  --violet: #322D5A;
+  --mid: #5E3E84;
+  --bright: #9A7FE0;
+  --glow: #C8B8FF;
+  --moon: #E2D9FF;
+  --text: #E6E1EC;
+  --quiet: #9A93A3;
+  --heading: Oswald, 'Arial Narrow', Impact, sans-serif;
+  --body: Inter, system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; color: var(--text); font: 15px/1.5 var(--body); }
+button {
+  font: 600 15px var(--body); color: var(--text); background: var(--accent);
+  border: 1px solid var(--mid); border-radius: 8px; padding: 10px 18px; cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+button:hover, button:focus-visible { background: var(--mid); box-shadow: 0 0 14px rgba(154, 127, 224, 0.45); outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+button:disabled:hover { background: var(--accent); }
+button.primary:disabled:hover { background: var(--mid); }
+</style>
+<style>
+/* lib/level.css */
+/* Shared look for every level: screens, the piano and the key-found moment. */
+html, body { height: 100%; background: var(--bg); overflow: hidden; }
+.screen {
+  position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 24px 16px; gap: 12px;
+}
+.screen.show { display: flex; animation: fade-in 0.5s ease-out both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.eyebrow { font: 500 14px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+h1 { margin: 0; font: 600 44px/1.15 var(--heading); letter-spacing: 0.02em; }
+p { margin: 0; max-width: 520px; color: var(--quiet); }
+p.lead { color: var(--text); font-size: 17px; }
+.buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+button.primary { background: var(--mid); border-color: var(--bright); }
+
+/* Play screen: the level's stage on top, the piano underneath. */
+#play { justify-content: flex-start; padding: 20px 16px 16px; gap: 0; }
+.stage { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 0; }
+.focus-banner {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
+  background: var(--panel); border: 1px solid var(--bright); border-radius: 8px; padding: 6px 14px;
+  font-size: 13px; color: var(--glow); cursor: pointer; display: none;
+}
+.focus-banner.show { display: block; }
+.skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
+.skip[hidden] { display: none; }
+
+/* Piano */
+.piano { --white-w: 46px; --black-w: 30px; width: calc(var(--whites) * var(--white-w)); user-select: none; -webkit-user-select: none; }
+.piano-bar { display: flex; justify-content: space-between; font: 500 12px var(--heading); letter-spacing: 0.12em; text-transform: uppercase; color: var(--quiet); margin-bottom: 6px; }
+.piano-octave b { color: var(--glow); }
+.piano-keys { position: relative; display: flex; height: 150px; touch-action: none; }
+.piano-key { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 8px; cursor: pointer; transition: background 0.08s, box-shadow 0.15s; }
+.piano-key.white {
+  width: var(--white-w); height: 100%; background: linear-gradient(#d9d4e3, #c9c2d6); border: 1px solid #181818; border-radius: 0 0 6px 6px;
+  color: #4a4357;
+}
+.piano-key.black {
+  position: absolute; top: 0; width: var(--black-w); height: 62%; z-index: 2; background: linear-gradient(#2a2731, #141318);
+  border: 1px solid #000; border-radius: 0 0 4px 4px; color: #9a93a3;
+}
+.piano-letter { font: 600 13px var(--body); }
+.piano-name { font: 500 10px var(--heading); letter-spacing: 0.06em; min-height: 12px; opacity: 0.8; }
+.piano-key.white.down { background: linear-gradient(#c8b8ff, #9a7fe0); color: #181818; }
+.piano-key.black.down { background: linear-gradient(#9a7fe0, #5e3e84); color: #fff; }
+.piano-key.mark-target { animation: target 1.6s ease-in-out infinite; }
+.piano-key.white.mark-target { background: linear-gradient(#e2d9ff, #b8a4ec); }
+.piano-key.black.mark-target { background: linear-gradient(#5e3e84, #362d40); }
+@keyframes target { 0%, 100% { box-shadow: 0 0 6px 1px rgba(154, 127, 224, 0.5); } 50% { box-shadow: 0 0 18px 5px rgba(200, 184, 255, 0.9); } }
+.piano-key.mark-good { box-shadow: 0 0 22px 6px rgba(200, 184, 255, 0.95); }
+.piano-key.locked { opacity: 0.28; filter: grayscale(1); cursor: not-allowed; }
+.piano-key.mark-bad { background: linear-gradient(#e7a3b0, #c46a7a) !important; }
+
+/* Key found */
+.key-art { width: 84px; height: 168px; margin-bottom: 4px; animation: rise 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both, shine 3s 1.1s ease-in-out infinite; }
+@keyframes rise { from { transform: translateY(140px) scale(0.6) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes shine { 0%, 100% { filter: drop-shadow(0 0 8px rgba(154, 127, 224, 0.55)); } 50% { filter: drop-shadow(0 0 22px rgba(200, 184, 255, 0.9)); } }
+#found .text { animation: fade-in 0.6s 0.7s ease-out both; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.heart-found { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #ff8fa6; font-weight: 600; animation: fade-in 0.6s 1.1s ease-out both; }
+.heart-found svg { width: 46px; height: 40px; fill: #ff5d7a; filter: drop-shadow(0 0 12px rgba(255, 93, 122, 0.8)); animation: heart-pop 0.7s 1.1s cubic-bezier(0.3, 1.6, 0.5, 1) both, heart-beat 1.4s 1.8s ease-in-out infinite; }
+@keyframes heart-pop { from { transform: scale(0.2); } to { transform: scale(1); } }
+@keyframes heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.15); } 30% { transform: scale(1); } 45% { transform: scale(1.1); } }
+.heart-found[hidden] { display: none; }
+</style>
+<style>
+  #play { padding-top: 10px; }
+  .top { display: flex; align-items: baseline; gap: 14px; }
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #problem { font: 600 24px var(--heading); letter-spacing: 0.02em; }
+  .desk {
+    display: flex; gap: 8px; padding: 10px; margin: 6px 0 4px;
+    background: linear-gradient(#24212b, #1a1820); border: 1px solid var(--accent); border-radius: 12px;
+  }
+  .strip {
+    width: 118px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: #1e1c24; border: 1px solid #2c2934; border-radius: 8px; padding: 6px 8px;
+  }
+  .strip.dim { opacity: 0.45; }
+  .strip h3 { margin: 0; font: 600 14px var(--heading); letter-spacing: 0.1em; color: var(--glow); }
+  .row { width: 100%; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 4px; }
+  .row span { font: 500 10px var(--heading); letter-spacing: 0.1em; color: var(--quiet); }
+  input[type=range] { width: 100%; accent-color: var(--bright); cursor: pointer; margin: 0; }
+  .fader-wrap { display: flex; align-items: center; gap: 6px; height: 104px; }
+  .fader { writing-mode: vertical-lr; direction: rtl; width: 22px !important; height: 100px; }
+  .db { font: 600 12px var(--heading); color: var(--text); width: 40px; text-align: left; }
+  .ms { display: flex; gap: 6px; }
+  .ms button { padding: 2px 9px; font: 600 12px var(--heading); }
+  .ms button.on.mute { background: #c46a7a; border-color: #e7a3b0; color: #181818; }
+  .ms button.on.solo { background: #d9c27a; border-color: #f0dfa4; color: #181818; }
+  .master { width: 60px; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: flex-end; }
+  .master span { font: 500 10px var(--heading); letter-spacing: 0.12em; color: var(--quiet); }
+  .meter { width: 16px; height: 190px; background: #121116; border: 1px solid #2c2934; border-radius: 4px; position: relative; overflow: hidden; }
+  .meter i {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 0; transition: height 0.06s;
+    /* The colour scale spans the whole meter, so it only turns pink near the top. */
+    background: linear-gradient(to top, #9A7FE0, #C8B8FF 70%, #ff5d7a) bottom / 100% 190px no-repeat;
+  }
+  .controls { display: flex; gap: 10px; align-items: center; }
+  #feedback { min-height: 1.4em; color: var(--glow); margin: 0; }
+  #feedback.bad { color: #e7a3b0; }
+  .piano { --white-w: 40px; }
+  .piano .piano-keys { height: 90px; }
+</style>
+</head>
+<body>
+<script>
+/* lib/keys.js */
+// Facts about the 12 keys, shared by the embed boxes.
+const KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'];
+
+const KEY_INFO = {
+  C:    { label: 'C',  minor: 'Am',  signature: 'No sharps or flats', level: 'Tutorial',           semitones: 0 },
+  G:    { label: 'G',  minor: 'Em',  signature: '1 sharp',            level: 'Wrong Note',         semitones: 7 },
+  D:    { label: 'D',  minor: 'Bm',  signature: '2 sharps',           level: 'Key Signature Lock', semitones: 2 },
+  A:    { label: 'A',  minor: 'F♯m', signature: '3 sharps',           level: 'Feedback',           semitones: 9 },
+  E:    { label: 'E',  minor: 'C♯m', signature: '4 sharps',           level: 'Melody Memory',      semitones: 4 },
+  B:    { label: 'B',  minor: 'G♯m', signature: '5 sharps',           level: 'Fix the Mix',        semitones: 11 },
+  'F#': { label: 'F♯', minor: 'D♯m', signature: '6 sharps (or 6 flats as G♭)', level: 'The Tritone', semitones: 6, alt: 'G♭' },
+  Db:   { label: 'D♭', minor: 'B♭m', signature: '5 flats',            level: 'Chord Progression',  semitones: 1 },
+  Ab:   { label: 'A♭', minor: 'Fm',  signature: '4 flats',            level: 'Survival Waves',     semitones: 8 },
+  Eb:   { label: 'E♭', minor: 'Cm',  signature: '3 flats',            level: 'Beat Rebuild',       semitones: 3 },
+  Bb:   { label: 'B♭', minor: 'Gm',  signature: '2 flats',            level: 'Arpeggio Maze',      semitones: 10 },
+  F:    { label: 'F',  minor: 'Dm',  signature: '1 flat',             level: 'Final Boss',         semitones: 5 },
+};
+
+const keyLabel = (key) => KEY_INFO[key].label;
+
+// Root note of a key as a MIDI number, kept between F#3 and F#4.
+function rootMidi(key) {
+  const s = KEY_INFO[key].semitones;
+  return 60 + (s > 6 ? s - 12 : s);
+}
+</script>
+<script>
+/* lib/bridge.js */
+// Talks to the Wix page code around this embed box.
+// Keeps saying "ready" until the page answers, in case the page code
+// starts listening after the box loads.
+const Bridge = (() => {
+  const handlers = {};
+  const standalone = window.parent === window;
+  let answered = false;
+
+  window.addEventListener('message', (event) => {
+    const message = event.data;
+    if (!message || typeof message.type !== 'string' || message.type === 'ready') return;
+    answered = true;
+    if (handlers[message.type]) handlers[message.type](message);
+  });
+
+  function send(message) {
+    if (!standalone) window.parent.postMessage(message, '*');
+  }
+
+  function start() {
+    if (standalone) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (answered || ++tries > 40) clearInterval(timer);
+      else send({ type: 'ready' });
+    }, 400);
+    send({ type: 'ready' });
+  }
+
+  return { on: (type, fn) => { handlers[type] = fn; }, send, start, standalone };
+})();
+</script>
+<script>
+/* lib/sound.js */
+// Sound engine. Plays your samples when SAMPLES lists them, otherwise a soft
+// built-in synth. Samples only need one note every few semitones: the nearest
+// one is pitched to fill the gaps.
+const Sound = (() => {
+  // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
+  const SAMPLES = {};
+
+  let ctx = null;
+  let out = null;
+  const buffers = {};
+
+  function audio() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      out = ctx.createDynamicsCompressor();
+      out.connect(ctx.destination);
+      loadSamples();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  async function loadSamples() {
+    for (const [midi, url] of Object.entries(SAMPLES)) {
+      try {
+        const data = await (await fetch(url)).arrayBuffer();
+        buffers[midi] = await ctx.decodeAudioData(data);
+      } catch (err) {
+        // A missing sample falls back to the synth.
+      }
+    }
+  }
+
+  function nearestSample(midi) {
+    let best = null;
+    for (const m of Object.keys(buffers).map(Number)) {
+      if (best === null || Math.abs(m - midi) < Math.abs(best - midi)) best = m;
+    }
+    return best;
+  }
+
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  // Starts a note that rings until stop() is called. Used for held keys.
+  function voice(midi, t, volume) {
+    const a = audio();
+    const gain = a.createGain();
+    gain.connect(out);
+    const sources = [];
+
+    const sample = nearestSample(midi);
+    if (sample !== null) {
+      const src = a.createBufferSource();
+      src.buffer = buffers[sample];
+      src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
+      gain.gain.setValueAtTime(volume, t);
+      src.connect(gain);
+      src.start(t);
+      sources.push(src);
+    } else {
+      const filter = a.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2600;
+      filter.connect(gain);
+      for (const detune of [-7, 7]) {
+        const osc = a.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = hz(midi);
+        osc.detune.value = detune;
+        osc.connect(filter);
+        osc.start(t);
+        sources.push(osc);
+      }
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(volume * 0.5, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(volume * 0.25, t + 0.3);
+    }
+
+    let stopped = false;
+    return {
+      stop(at = a.currentTime) {
+        if (stopped) return;
+        stopped = true;
+        const end = Math.max(at, a.currentTime);
+        gain.gain.cancelScheduledValues(end);
+        gain.gain.setTargetAtTime(0.0001, end, 0.12);
+        sources.forEach((src) => src.stop(end + 1));
+      },
+    };
+  }
+
+  // One note of a set length. `when` is seconds from now.
+  function note(midi, when = 0, length = 1.2, volume = 0.4) {
+    const t = audio().currentTime + 0.03 + when;
+    voice(midi, t, volume).stop(t + length);
+  }
+
+  // A held note: returns an object with stop().
+  function hold(midi, volume = 0.4) {
+    return voice(midi, audio().currentTime + 0.01, volume);
+  }
+
+  function chord(midis, when = 0, length = 1.2, volume = 0.4) {
+    midis.forEach((m) => note(m, when, length, volume / Math.sqrt(midis.length)));
+  }
+
+  // Filtered noise, for thuds and whooshes.
+  function noise(when, length, from, to, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const buffer = a.createBuffer(1, Math.ceil(a.sampleRate * length), a.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource();
+    const filter = a.createBiquadFilter();
+    const gain = a.createGain();
+    src.buffer = buffer;
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(from, t);
+    filter.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    src.connect(filter).connect(gain).connect(out);
+    src.start(t);
+  }
+
+  function thump(when, from, to, length, volume) {
+    const a = audio();
+    const t = a.currentTime + 0.03 + when;
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    osc.connect(gain).connect(out);
+    osc.start(t);
+    osc.stop(t + length + 0.05);
+  }
+
+  return {
+    unlock: audio,
+    note,
+    hold,
+    chord,
+    // A wrong note: a soft low buzz.
+    buzz() {
+      const a = audio();
+      const t = a.currentTime + 0.02;
+      const osc = a.createOscillator();
+      const filter = a.createBiquadFilter();
+      const gain = a.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 98;
+      filter.type = 'lowpass';
+      filter.frequency.value = 500;
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(filter).connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    },
+    // Locked door: two dull knocks.
+    locked() {
+      thump(0, 120, 55, 0.18, 0.5);
+      noise(0, 0.08, 900, 200, 0.25);
+      thump(0.11, 110, 50, 0.16, 0.35);
+    },
+    // Getting hit in a fight: a short, quiet feedback squeal.
+    squeal() {
+      const a = audio();
+      const t = a.currentTime + 0.01;
+      const osc = a.createOscillator();
+      const gain = a.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2100, t);
+      osc.frequency.exponentialRampToValueAtTime(3200, t + 0.25);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.06, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(gain).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.32);
+      noise(0, 0.12, 3000, 800, 0.12);
+    },
+    // A note landing on the boss.
+    hit() { thump(0, 190, 90, 0.12, 0.28); },
+    // Ear defenders blocking a note.
+    block() { noise(0, 0.1, 5000, 1500, 0.18); },
+    // A lock springing open: two clicks and a soft thud.
+    unlocked() {
+      noise(0, 0.03, 6000, 3000, 0.35);
+      noise(0.07, 0.03, 7000, 3500, 0.3);
+      thump(0.1, 160, 70, 0.2, 0.35);
+    },
+    // Door swinging open.
+    whoosh() {
+      noise(0, 0.6, 300, 2400, 0.12);
+    },
+    // A key going into the circle: its perfect fifth, then its major triad.
+    insert(root) {
+      chord([root, root + 7], 0, 0.9, 0.5);
+      chord([root, root + 4, root + 7, root + 12], 0.55, 2.4, 0.55);
+    },
+    // Clicking a lit key once the circle is complete.
+    fifth(root) {
+      chord([root, root + 7], 0, 1.1, 0.45);
+    },
+    // Finding a key at the end of a level: a rising arpeggio.
+    keyFound(root) {
+      [0, 4, 7, 12, 16].forEach((step, i) => note(root + step, i * 0.12, 1.4, 0.35));
+    },
+  };
+})();
+</script>
+<script>
+/* lib/piano.js */
+// On-screen piano, played with the computer keyboard (the same layout as
+// Ableton's and FL Studio's computer-keyboard piano) or by clicking.
+//   W E   T Y U   O P
+//  A S D F G H J K L ; '      Z / X shift the octave
+// Boss fights switch to scale mode: A S D F G H J K play the 8 notes of the
+// level's scale, so one hand can play while the other moves.
+// Levels listen with onNoteOn / onNoteOff and can mark keys with
+// mark(midi, 'target' | 'good' | 'bad').
+const Piano = (() => {
+  const CHROMATIC_CODES = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY',
+    'KeyH', 'KeyU', 'KeyJ', 'KeyK', 'KeyO', 'KeyL', 'KeyP', 'Semicolon', 'Quote'];
+  const CHROMATIC_LETTERS = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J', 'K', 'O', 'L', 'P', ';', "'"];
+  const SCALE_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK'];
+  const SCALE_LETTERS = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K'];
+  const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const BLACK = [1, 3, 6, 8, 10];
+
+  const noteName = (midi) => NAMES[((midi % 12) + 12) % 12];
+  const octaveOf = (midi) => Math.floor(midi / 12) - 1;
+
+  function create(container, { octave: startOctave = 4 } = {}) {
+    const listeners = { on: [], off: [] };
+    const held = new Map(); // midi → sound
+    const pressedCodes = new Map(); // keyboard code → midi
+    const targetPitches = new Set();
+    let enabled = true;
+    let shift = 0; // octaves up or down from the starting layout
+    let layout = []; // [{ code, letter, midi, black, el }]
+    let scaleMode = false;
+    let allowed = null; // null = every key works; otherwise a Set of note names (0–11)
+    let chromaticBase = (startOctave + 1) * 12;
+
+    container.classList.add('piano');
+    container.innerHTML = `
+      <div class="piano-bar">
+        <span class="piano-octave">Octave <b></b></span>
+        <span class="piano-help">Z / X change octave</span>
+      </div>
+      <div class="piano-keys"></div>`;
+    const keysEl = container.querySelector('.piano-keys');
+    const octaveEl = container.querySelector('.piano-octave b');
+
+    const midiOf = (entry) => entry.midi + shift * 12;
+    const entryFor = (midi) => layout.find((k) => midiOf(k) === midi) || null;
+
+    function render() {
+      keysEl.innerHTML = '';
+      let whiteIndex = 0;
+      layout.forEach((k) => {
+        const el = document.createElement('div');
+        el.className = 'piano-key ' + (k.black ? 'black' : 'white');
+        el.innerHTML = `<span class="piano-letter">${k.letter}</span><span class="piano-name"></span>`;
+        if (k.black) el.style.left = `calc(${whiteIndex} * var(--white-w) - var(--black-w) / 2)`;
+        else whiteIndex++;
+        keysEl.appendChild(el);
+        k.el = el;
+      });
+      container.style.setProperty('--whites', whiteIndex);
+      container.classList.toggle('scale-mode', scaleMode);
+      relabel();
+    }
+
+    function relabel() {
+      octaveEl.textContent = octaveOf(midiOf(layout[0]));
+      layout.forEach((k) => {
+        const midi = midiOf(k);
+        k.el.dataset.midi = midi;
+        const name = scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
+        k.el.querySelector('.piano-name').textContent = name;
+        k.el.classList.toggle('mark-target', targetPitches.has(midi % 12));
+        k.el.classList.toggle('locked', allowed !== null && !allowed.has(midi % 12));
+        k.el.classList.remove('mark-good', 'mark-bad');
+      });
+    }
+
+    function chromatic() {
+      scaleMode = false;
+      layout = CHROMATIC_CODES.map((code, i) => ({
+        code, letter: CHROMATIC_LETTERS[i], midi: chromaticBase + i, black: BLACK.includes(i % 12),
+      }));
+      render();
+    }
+
+    function down(midi, source) {
+      if (!enabled || held.has(midi)) return;
+      if (allowed !== null && !allowed.has(midi % 12)) return; // greyed out
+      held.set(midi, Sound.hold(midi));
+      const entry = entryFor(midi);
+      if (entry) entry.el.classList.add('down');
+      listeners.on.forEach((fn) => fn(midi, source));
+    }
+
+    function up(midi) {
+      const sound = held.get(midi);
+      if (!sound) return;
+      sound.stop();
+      held.delete(midi);
+      const entry = entryFor(midi);
+      if (entry) entry.el.classList.remove('down');
+      listeners.off.forEach((fn) => fn(midi));
+    }
+
+    function releaseAll() {
+      [...held.keys()].forEach(up);
+      pressedCodes.clear();
+    }
+
+    function setOctave(n) {
+      const nextShift = shift + (n - octaveOf(midiOf(layout[0])));
+      const lowest = midiOf(layout[0]) + (nextShift - shift) * 12;
+      if (lowest < 36 || lowest > 84) return; // keep between C2 and C6
+      releaseAll();
+      shift = nextShift;
+      relabel();
+    }
+
+    // Computer keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === 'KeyZ' || e.code === 'KeyX') {
+        e.preventDefault();
+        if (!e.repeat) setOctave(octaveOf(midiOf(layout[0])) + (e.code === 'KeyZ' ? -1 : 1));
+        return;
+      }
+      const entry = layout.find((k) => k.code === e.code);
+      if (!entry) return;
+      e.preventDefault();
+      if (e.repeat || pressedCodes.has(e.code)) return;
+      Sound.unlock();
+      const midi = midiOf(entry);
+      pressedCodes.set(e.code, midi);
+      down(midi, 'keyboard');
+    });
+    window.addEventListener('keyup', (e) => {
+      if (!pressedCodes.has(e.code)) return;
+      up(pressedCodes.get(e.code));
+      pressedCodes.delete(e.code);
+    });
+    window.addEventListener('blur', releaseAll);
+
+    // Mouse and touch
+    keysEl.addEventListener('pointerdown', (e) => {
+      const key = e.target.closest('.piano-key');
+      if (!key) return;
+      e.preventDefault();
+      Sound.unlock();
+      const midi = Number(key.dataset.midi);
+      down(midi, 'pointer');
+      const release = () => {
+        up(midi);
+        window.removeEventListener('pointerup', release);
+        window.removeEventListener('pointercancel', release);
+      };
+      window.addEventListener('pointerup', release);
+      window.addEventListener('pointercancel', release);
+    });
+
+    chromatic();
+
+    return {
+      onNoteOn: (fn) => listeners.on.push(fn),
+      onNoteOff: (fn) => listeners.off.push(fn),
+      held: () => [...held.keys()],
+      // Marks a key: 'target' glows (play this), 'good' and 'bad' flash.
+      mark(midi, kind) {
+        const entry = entryFor(midi);
+        if (!entry) return;
+        const el = entry.el;
+        if (kind === 'target') return el.classList.add('mark-target');
+        el.classList.remove('mark-good', 'mark-bad');
+        void el.offsetWidth;
+        el.classList.add('mark-' + kind);
+        setTimeout(() => el.classList.remove('mark-' + kind), 600);
+      },
+      // Marks every key with this note name (in any octave) as a target.
+      markPitch(pitchClass) {
+        targetPitches.add(((pitchClass % 12) + 12) % 12);
+        relabel();
+      },
+      clearMarks() {
+        targetPitches.clear();
+        relabel();
+      },
+      // Scale mode: A S D F G H J K play root + each step (default: major scale).
+      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11, 12]) {
+        releaseAll();
+        scaleMode = true;
+        shift = 0;
+        layout = steps.map((step, i) => ({ code: SCALE_CODES[i], letter: SCALE_LETTERS[i], midi: root + step, black: false }));
+        render();
+      },
+      useChromatic() { releaseAll(); shift = 0; chromatic(); },
+      setEnabled(on) { enabled = on; if (!on) releaseAll(); },
+      // Greys out every key except these note names (0–11). null unlocks all.
+      setAllowed(pitchClasses) {
+        allowed = pitchClasses ? new Set(pitchClasses.map((pc) => ((pc % 12) + 12) % 12)) : null;
+        relabel();
+      },
+      get octave() { return octaveOf(midiOf(layout[0])); },
+      setOctave,
+    };
+  }
+
+  return { create, noteName, octaveOf };
+})();
+</script>
+<script>
+/* lib/level.js */
+// The frame every level sits in: intro screen, play screen with the piano,
+// the key-found screen and the phone message. A level calls Level.setup()
+// with what to do when play starts, and Level.win() when it's beaten.
+const Level = (() => {
+  const $ = (id) => document.getElementById(id);
+  let key = null;
+  let testMode = false;
+  let extraHearts = 0;
+  let onStart = () => {};
+  let finishing = false;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <section class="screen" id="phone">
+      <div class="eyebrow">Hidden level</div>
+      <h1>Best played on a computer</h1>
+      <p>This level needs a keyboard and a bigger screen. Come back on a laptop or desktop to play.</p>
+    </section>
+    <section class="screen" id="intro">
+      <div class="eyebrow" id="introEyebrow"></div>
+      <h1 id="introTitle"></h1>
+      <p id="introText"></p>
+      <p id="introBeaten" hidden>You've already found this key. Play again for fun.</p>
+      <div class="buttons"><button class="primary" id="startBtn">Start</button></div>
+    </section>
+    <section class="screen" id="play">
+      <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
+      <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
+      <div class="stage" id="stage"></div>
+      <div id="piano"></div>
+    </section>
+    <section class="screen" id="found">
+      <svg class="key-art" viewBox="0 0 120 240" aria-hidden="true">
+        <defs>
+          <linearGradient id="keyFill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#C8B8FF"/><stop offset="1" stop-color="#9A7FE0"/>
+          </linearGradient>
+        </defs>
+        <circle cx="60" cy="52" r="40" fill="none" stroke="url(#keyFill)" stroke-width="12"/>
+        <text id="keyArtLabel" x="60" y="64" text-anchor="middle" fill="#C8B8FF" font-family="Oswald, sans-serif" font-weight="600" font-size="32"></text>
+        <rect x="53" y="90" width="14" height="128" rx="4" fill="url(#keyFill)"/>
+        <rect x="66" y="176" width="26" height="12" rx="3" fill="url(#keyFill)"/>
+        <rect x="66" y="200" width="18" height="12" rx="3" fill="url(#keyFill)"/>
+      </svg>
+      <div class="text">
+        <h1 id="foundTitle"></h1>
+        <p class="lead" id="foundText"></p>
+        <div class="heart-found" id="heartFound" hidden>
+          <svg viewBox="-12 -12 24 20" aria-hidden="true"><path d="M0 6C-10-2-10-10-5-10C-2-10 0-8 0-6C0-8 2-10 5-10C10-10 10-2 0 6Z"/></svg>
+          <span>You found a hidden heart. You’ll start every boss fight with one more.</span>
+        </div>
+        <div class="buttons" id="foundButtons"></div>
+      </div>
+    </section>`);
+
+  const piano = Piano.create($('piano'));
+  piano.setEnabled(false);
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
+    piano.setEnabled(id === 'play');
+  }
+
+  function button(text, onClick, primary) {
+    const b = document.createElement('button');
+    b.textContent = text;
+    if (primary) b.className = 'primary';
+    b.onclick = onClick;
+    return b;
+  }
+
+  // The game only hears the keyboard while it has focus.
+  window.addEventListener('blur', () => $('focusBanner').classList.add('show'));
+  window.addEventListener('focus', () => $('focusBanner').classList.remove('show'));
+  $('focusBanner').onclick = () => { window.focus(); $('focusBanner').classList.remove('show'); };
+
+  const touchOnly = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+
+  Bridge.on('level', (message) => {
+    key = message.key;
+    testMode = message.testMode === true;
+    extraHearts = Number(message.extraHearts) || 0;
+    if (touchOnly) return show('phone');
+    $('introEyebrow').textContent = `Level ${KEYS.indexOf(key) + 1} · Key of ${keyLabel(key)}`;
+    $('introTitle').textContent = KEY_INFO[key].level;
+    $('introBeaten').hidden = message.status !== 'beaten';
+    show('intro');
+  });
+
+  $('startBtn').onclick = () => {
+    Sound.unlock();
+    window.focus();
+    show('play');
+    // Preview only: lets you skip a level while testing the site.
+    $('skipBtn').hidden = !testMode;
+    $('skipBtn').onclick = () => Level.win();
+    onStart($('stage'));
+  };
+
+  Bridge.on('levelSaved', (message) => {
+    const label = keyLabel(key);
+    $('keyArtLabel').textContent = label;
+    const buttons = $('foundButtons');
+    buttons.innerHTML = '';
+    $('foundTitle').textContent = message.gotKey ? `You found the key of ${label}.`
+      : message.gotHeart ? 'Hidden heart found' : 'Level complete';
+    if (message.gotKey) Sound.keyFound(rootMidi(key));
+    $('heartFound').hidden = !message.gotHeart;
+    if (message.gotHeart) Sound.chord([rootMidi(key) + 12, rootMidi(key) + 16, rootMidi(key) + 19], 1.2, 1.6, 0.35);
+
+    // The tutorial is the only time the player is told what to do.
+    if (message.firstKey) {
+      $('foundText').textContent = 'You just discovered your first key. Take it to the circle of fifths to continue.';
+      buttons.append(button('Go to the circle of fifths', () => Bridge.send({ type: 'navigate', to: 'circle' }), true));
+    } else {
+      $('foundText').textContent = message.gotKey || message.gotHeart ? '' : 'You already have this key.';
+    }
+    buttons.append(button('Back', () => Bridge.send({ type: 'navigate', to: 'back' }), !message.firstKey));
+    show('found');
+  });
+
+  return {
+    piano,
+    get key() { return key; },
+    // True in Wix Preview: levels may show test shortcuts.
+    get testMode() { return testMode; },
+    // Hidden hearts found so far: boss fights add these to the starting hearts.
+    get extraHearts() { return extraHearts; },
+    back() { Bridge.send({ type: 'navigate', to: 'back' }); },
+    // description: the line under the title on the intro screen.
+    setup({ description, start }) {
+      $('introText').textContent = description;
+      onStart = start;
+      Bridge.start();
+    },
+    // win({ heart: true }) also reports finding this level's hidden heart.
+    win(options = {}) {
+      if (finishing) return;
+      finishing = true;
+      piano.setEnabled(false);
+      Bridge.send({ type: 'levelComplete', heart: options.heart === true });
+    },
+  };
+})();
+</script>
+<script>
+  // Level 6, key of B: a 4-bar loop in B major with something wrong in the mix.
+  // Three rounds, one problem each; fixes carry over between rounds.
+  // Hidden: a faint whine on the keys channel. Cut the keys' HIGH to find a heart.
+  const TRACKS = ['drums', 'bass', 'keys', 'lead'];
+  const LABELS = { drums: 'Drums', bass: 'Bass', keys: 'Keys', lead: 'Lead' };
+  const WHINE_CUT = -6;  // keys HIGH at or below this removes the whine
+
+  // Each round sets some controls wrong, describes the problem, and says when it's fixed.
+  const ROUNDS = [
+    {
+      problem: 'Something’s far too loud.',
+      set: { lead: { fader: 9 } },
+      fixed: (m) => m.lead.fader <= 2,
+      hint: 'The lead is much louder than everything else. Pull its fader down.',
+      done: 'Better. Balance comes first: if one part drowns the rest, nothing else matters.',
+    },
+    {
+      problem: 'The low end is muddy.',
+      set: { keys: { low: 10 } },
+      fixed: (m) => m.keys.low <= 2 && m.bass.low >= -4,
+      hint: 'The keys have a big boost in the lows, fighting the bass. Cut the keys’ LOW, and leave the bass alone.',
+      done: 'Clean. Only one thing should own the low end, and here that’s the bass.',
+    },
+    {
+      problem: 'The whole mix is lopsided.',
+      set: { drums: { pan: -1 }, bass: { pan: -1 }, keys: { pan: -1 }, lead: { pan: -1 } },
+      fixed: (m) => Math.abs(m.drums.pan) <= 0.2 && Math.abs(m.bass.pan) <= 0.2
+        && Math.abs(TRACKS.reduce((sum, t) => sum + m[t].pan, 0) / TRACKS.length) <= 0.25,
+      hint: 'Kick and bass usually sit in the middle. Centre them, then spread the keys and lead either side.',
+      done: 'That’s a mix. Centre the low end, spread the rest.',
+    },
+  ];
+
+  // The mix the player controls.
+  const mix = {};
+  TRACKS.forEach((t) => { mix[t] = { fader: 0, low: 0, high: 0, pan: 0, mute: false, solo: false }; });
+  let round = 0;
+  let tries = 0;
+  let ui = {};
+  window.__mix = { mix, get round() { return round; } };
+
+  // ---------- Audio: four channels into a master bus ----------
+  let ctx = null, channels = {}, master, analyser, scheduler = null, step = 0, nextTime = 0;
+  const BPM = 100, STEP = 60 / BPM / 4; // 16th notes
+
+  function buildAudio() {
+    ctx = Sound.unlock();
+    master = ctx.createGain();
+    master.gain.value = 0.8;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    master.connect(analyser).connect(ctx.destination);
+    TRACKS.forEach((t) => {
+      const input = ctx.createGain();
+      const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 220;
+      const high = ctx.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 3200;
+      const pan = ctx.createStereoPanner();
+      const fader = ctx.createGain();
+      input.connect(low).connect(high).connect(pan).connect(fader).connect(master);
+      channels[t] = { input, low, high, pan, fader };
+    });
+    // The hidden whine: quiet and high, on the keys channel before its EQ.
+    const whine = ctx.createOscillator();
+    const whineGain = ctx.createGain();
+    whine.frequency.value = 3951; // B7
+    whineGain.gain.value = 0.014;
+    whine.connect(whineGain).connect(channels.keys.input);
+    whine.start();
+    applyMix();
+  }
+
+  const dbToGain = (db) => (db <= -30 ? 0 : Math.pow(10, db / 20));
+
+  function applyMix() {
+    if (!ctx) return;
+    const soloing = TRACKS.some((t) => mix[t].solo);
+    TRACKS.forEach((t) => {
+      const c = channels[t], m = mix[t];
+      const audible = !m.mute && (!soloing || m.solo);
+      c.low.gain.setTargetAtTime(m.low, ctx.currentTime, 0.02);
+      c.high.gain.setTargetAtTime(m.high, ctx.currentTime, 0.02);
+      c.pan.pan.setTargetAtTime(m.pan, ctx.currentTime, 0.02);
+      c.fader.gain.setTargetAtTime(audible ? dbToGain(m.fader) * 0.5 : 0, ctx.currentTime, 0.02);
+    });
+  }
+
+  // Small synth voices, each into its channel.
+  function env(node, t, peak, attack, decay) {
+    node.gain.setValueAtTime(0.0001, t);
+    node.gain.exponentialRampToValueAtTime(peak, t + attack);
+    node.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+  }
+  function tone(track, type, freq, t, peak, attack, decay, filterFreq) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    let out = osc;
+    if (filterFreq) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filterFreq; osc.connect(f); out = f; }
+    out.connect(g).connect(channels[track].input);
+    env(g, t, peak, attack, decay);
+    osc.start(t); osc.stop(t + attack + decay + 0.05);
+    return osc;
+  }
+  function noise(track, t, peak, decay, type, freq) {
+    const len = Math.ceil(ctx.sampleRate * (decay + 0.05));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = buf; f.type = type; f.frequency.value = freq;
+    src.connect(f).connect(g).connect(channels[track].input);
+    env(g, t, peak, 0.002, decay);
+    src.start(t);
+  }
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  // B major: B, G♯m, E, F♯, one bar each.
+  const CHORDS = [[59, 63, 66], [56, 59, 63], [52, 56, 59], [54, 58, 61]];
+  const BASS = [35, 32, 28, 30];
+  const LEAD = [ // [step within 64, midi, length in steps]
+    [0, 71, 2], [2, 73, 2], [4, 75, 4], [8, 73, 2], [10, 71, 2], [12, 68, 4],
+    [16, 68, 2], [18, 71, 2], [20, 73, 6], [28, 75, 4],
+    [32, 76, 2], [34, 75, 2], [36, 73, 4], [40, 71, 4], [44, 68, 4],
+    [48, 70, 2], [50, 71, 2], [52, 73, 4], [56, 70, 8],
+  ];
+
+  function playStep(s, t) {
+    const bar = Math.floor(s / 16), inBar = s % 16;
+    if (inBar % 4 === 0) { // kick on every beat
+      const k = tone('drums', 'sine', 150, t, 0.9, 0.003, 0.25);
+      k.frequency.setValueAtTime(150, t); k.frequency.exponentialRampToValueAtTime(45, t + 0.2);
+    }
+    if (inBar === 4 || inBar === 12) { noise('drums', t, 0.45, 0.16, 'bandpass', 1800); tone('drums', 'triangle', 190, t, 0.25, 0.002, 0.1); }
+    if (inBar % 2 === 0) noise('drums', t, inBar % 4 === 2 ? 0.16 : 0.09, 0.04, 'highpass', 7500);
+    if (inBar % 2 === 0) tone('bass', 'sawtooth', hz(BASS[bar] + (inBar % 8 === 6 ? 12 : 0)), t, 0.35, 0.005, STEP * 1.8, 700);
+    if (inBar === 0 || inBar === 8) CHORDS[bar].forEach((m) => tone('keys', 'triangle', hz(m), t, 0.12, 0.03, STEP * 7, 2400));
+    for (const [at, midi, len] of LEAD) if (at === s) tone('lead', 'square', hz(midi), t, 0.07, 0.01, STEP * len * 0.9, 3000);
+  }
+
+  function startLoop() {
+    if (!ctx) buildAudio();
+    if (scheduler) return;
+    step = 0;
+    nextTime = ctx.currentTime + 0.08;
+    scheduler = setInterval(() => {
+      while (nextTime < ctx.currentTime + 0.12) {
+        playStep(step, nextTime);
+        nextTime += STEP;
+        step = (step + 1) % 64;
+      }
+    }, 25);
+    ui.playBtn.textContent = '■ Stop';
+    meterLoop();
+  }
+  function stopLoop() {
+    clearInterval(scheduler);
+    scheduler = null;
+    ui.playBtn.textContent = '▶ Play';
+  }
+
+  function meterLoop() {
+    if (!scheduler) { ui.meter.style.height = '0'; return; }
+    const data = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(data);
+    let peak = 0;
+    for (const v of data) peak = Math.max(peak, Math.abs(v));
+    ui.meter.style.height = `${Math.min(100, peak * 110)}%`;
+    requestAnimationFrame(meterLoop);
+  }
+
+  // ---------- The desk ----------
+  function drawDesk() {
+    ui.desk.innerHTML = '';
+    TRACKS.forEach((t) => {
+      const strip = document.createElement('div');
+      strip.className = 'strip';
+      strip.dataset.track = t;
+      strip.innerHTML = `
+        <h3>${LABELS[t].toUpperCase()}</h3>
+        <label class="row"><span>HIGH</span><input type="range" data-ctl="high" min="-12" max="12" step="1"></label>
+        <label class="row"><span>LOW</span><input type="range" data-ctl="low" min="-12" max="12" step="1"></label>
+        <label class="row"><span>PAN</span><input type="range" data-ctl="pan" min="-1" max="1" step="0.05"></label>
+        <div class="fader-wrap"><input class="fader" type="range" data-ctl="fader" min="-30" max="12" step="0.5"><span class="db"></span></div>
+        <div class="ms"><button class="mute" data-ctl="mute">M</button><button class="solo" data-ctl="solo">S</button></div>`;
+      strip.querySelectorAll('input').forEach((input) => {
+        input.setAttribute('aria-label', `${LABELS[t]} ${input.dataset.ctl}`);
+        input.oninput = () => { mix[t][input.dataset.ctl] = Number(input.value); refresh(); applyMix(); };
+      });
+      strip.querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { mix[t][b.dataset.ctl] = !mix[t][b.dataset.ctl]; b.blur(); refresh(); applyMix(); };
+      });
+      ui.desk.appendChild(strip);
+    });
+    const m = document.createElement('div');
+    m.className = 'master';
+    m.innerHTML = '<div class="meter"><i></i></div><span>MASTER</span>';
+    ui.desk.appendChild(m);
+    ui.meter = m.querySelector('i');
+    refresh();
+  }
+
+  // Shows the mix's values on the desk.
+  function refresh() {
+    const soloing = TRACKS.some((t) => mix[t].solo);
+    TRACKS.forEach((t) => {
+      const strip = ui.desk.querySelector(`[data-track="${t}"]`);
+      strip.querySelectorAll('input').forEach((input) => { input.value = mix[t][input.dataset.ctl]; });
+      strip.querySelector('.db').textContent = mix[t].fader <= -30 ? '−∞' : `${mix[t].fader > 0 ? '+' : ''}${mix[t].fader} dB`;
+      strip.querySelector('.mute').classList.toggle('on', mix[t].mute);
+      strip.querySelector('.solo').classList.toggle('on', mix[t].solo);
+      strip.classList.toggle('dim', mix[t].mute || (soloing && !mix[t].solo));
+    });
+  }
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  function startRound() {
+    const r = ROUNDS[round];
+    tries = 0;
+    for (const [t, values] of Object.entries(r.set)) Object.assign(mix[t], values);
+    ui.round.textContent = `Round ${round + 1} of ${ROUNDS.length}`;
+    ui.problem.textContent = r.problem;
+    ui.check.disabled = false;
+    refresh();
+    applyMix();
+    say(round === 0 ? 'Press Play and listen. Use the desk to fix it, then check the mix.' : 'Press Check when it sounds right.');
+  }
+
+  // Muting or burying a part doesn't count as fixing it.
+  function everythingHeard() {
+    return TRACKS.every((t) => !mix[t].mute && mix[t].fader >= -15);
+  }
+
+  function check() {
+    const r = ROUNDS[round];
+    if (!everythingHeard()) return say('Every part still needs to be heard: unmute it, or bring its fader back up.', true);
+    if (!r.fixed(mix)) {
+      tries++;
+      Sound.buzz();
+      return say(tries >= 2 ? `Not yet. Hint: ${r.hint}` : 'Not yet. Listen again: what still sounds wrong?', true);
+    }
+    ui.check.disabled = true;
+    Sound.chord([59, 63, 66, 71], 0, 1.2, 0.3);
+    say(r.done);
+    round++;
+    if (round < ROUNDS.length) return setTimeout(startRound, 2600);
+    setTimeout(() => {
+      stopLoop();
+      Level.win({ heart: mix.keys.high <= WHINE_CUT });
+    }, 2600);
+  }
+
+  Level.setup({
+    description: 'A track in B major with a broken mix. Use the desk to make it sound right.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="top"><span class="round" id="round"></span><span id="problem"></span></div>
+        <div class="desk" id="desk"></div>
+        <div class="controls"><button id="playBtn">▶ Play</button><button class="primary" id="checkBtn">Check the mix</button></div>
+        <p id="feedback"></p>`;
+      ui = {
+        round: stage.querySelector('#round'), problem: stage.querySelector('#problem'), desk: stage.querySelector('#desk'),
+        playBtn: stage.querySelector('#playBtn'), check: stage.querySelector('#checkBtn'), feedback: stage.querySelector('#feedback'),
+      };
+      ui.playBtn.onclick = () => { ui.playBtn.blur(); scheduler ? stopLoop() : startLoop(); };
+      ui.check.onclick = () => { ui.check.blur(); check(); };
+      drawDesk();
+      startRound();
+    },
+  });
+</script>
+</body>
+</html>

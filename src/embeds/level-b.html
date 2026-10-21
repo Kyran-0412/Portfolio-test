@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 6: Fix the Mix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 10px; }
+  .top { display: flex; align-items: baseline; gap: 14px; }
+  .round { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
+  #problem { font: 600 24px var(--heading); letter-spacing: 0.02em; }
+  .desk {
+    display: flex; gap: 8px; padding: 10px; margin: 6px 0 4px;
+    background: linear-gradient(#24212b, #1a1820); border: 1px solid var(--accent); border-radius: 12px;
+  }
+  .strip {
+    width: 118px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: #1e1c24; border: 1px solid #2c2934; border-radius: 8px; padding: 6px 8px;
+  }
+  .strip.dim { opacity: 0.45; }
+  .strip h3 { margin: 0; font: 600 14px var(--heading); letter-spacing: 0.1em; color: var(--glow); }
+  .row { width: 100%; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 4px; }
+  .row span { font: 500 10px var(--heading); letter-spacing: 0.1em; color: var(--quiet); }
+  input[type=range] { width: 100%; accent-color: var(--bright); cursor: pointer; margin: 0; }
+  .fader-wrap { display: flex; align-items: center; gap: 6px; height: 104px; }
+  .fader { writing-mode: vertical-lr; direction: rtl; width: 22px !important; height: 100px; }
+  .db { font: 600 12px var(--heading); color: var(--text); width: 40px; text-align: left; }
+  .ms { display: flex; gap: 6px; }
+  .ms button { padding: 2px 9px; font: 600 12px var(--heading); }
+  .ms button.on.mute { background: #c46a7a; border-color: #e7a3b0; color: #181818; }
+  .ms button.on.solo { background: #d9c27a; border-color: #f0dfa4; color: #181818; }
+  .master { width: 60px; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: flex-end; }
+  .master span { font: 500 10px var(--heading); letter-spacing: 0.12em; color: var(--quiet); }
+  .meter { width: 16px; height: 190px; background: #121116; border: 1px solid #2c2934; border-radius: 4px; position: relative; overflow: hidden; }
+  .meter i {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 0; transition: height 0.06s;
+    /* The colour scale spans the whole meter, so it only turns pink near the top. */
+    background: linear-gradient(to top, #9A7FE0, #C8B8FF 70%, #ff5d7a) bottom / 100% 190px no-repeat;
+  }
+  .controls { display: flex; gap: 10px; align-items: center; }
+  #feedback { min-height: 1.4em; color: var(--glow); margin: 0; }
+  #feedback.bad { color: #e7a3b0; }
+  .piano { --white-w: 40px; }
+  .piano .piano-keys { height: 90px; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 6, key of B: a 4-bar loop in B major with something wrong in the mix.
+  // Three rounds, one problem each; fixes carry over between rounds.
+  // Hidden: a faint whine on the keys channel. Cut the keys' HIGH to find a heart.
+  const TRACKS = ['drums', 'bass', 'keys', 'lead'];
+  const LABELS = { drums: 'Drums', bass: 'Bass', keys: 'Keys', lead: 'Lead' };
+  const WHINE_CUT = -6;  // keys HIGH at or below this removes the whine
+
+  // Each round sets some controls wrong, describes the problem, and says when it's fixed.
+  const ROUNDS = [
+    {
+      problem: 'Something’s far too loud.',
+      set: { lead: { fader: 9 } },
+      fixed: (m) => m.lead.fader <= 2,
+      hint: 'The lead is much louder than everything else. Pull its fader down.',
+      done: 'Better. Balance comes first: if one part drowns the rest, nothing else matters.',
+    },
+    {
+      problem: 'The low end is muddy.',
+      set: { keys: { low: 10 } },
+      fixed: (m) => m.keys.low <= 2 && m.bass.low >= -4,
+      hint: 'The keys have a big boost in the lows, fighting the bass. Cut the keys’ LOW, and leave the bass alone.',
+      done: 'Clean. Only one thing should own the low end, and here that’s the bass.',
+    },
+    {
+      problem: 'The whole mix is lopsided.',
+      set: { drums: { pan: -1 }, bass: { pan: -1 }, keys: { pan: -1 }, lead: { pan: -1 } },
+      fixed: (m) => Math.abs(m.drums.pan) <= 0.2 && Math.abs(m.bass.pan) <= 0.2
+        && Math.abs(TRACKS.reduce((sum, t) => sum + m[t].pan, 0) / TRACKS.length) <= 0.25,
+      hint: 'Kick and bass usually sit in the middle. Centre them, then spread the keys and lead either side.',
+      done: 'That’s a mix. Centre the low end, spread the rest.',
+    },
+  ];
+
+  // The mix the player controls.
+  const mix = {};
+  TRACKS.forEach((t) => { mix[t] = { fader: 0, low: 0, high: 0, pan: 0, mute: false, solo: false }; });
+  let round = 0;
+  let tries = 0;
+  let ui = {};
+  window.__mix = { mix, get round() { return round; } };
+
+  // ---------- Audio: four channels into a master bus ----------
+  let ctx = null, channels = {}, master, analyser, scheduler = null, step = 0, nextTime = 0;
+  const BPM = 100, STEP = 60 / BPM / 4; // 16th notes
+
+  function buildAudio() {
+    ctx = Sound.unlock();
+    master = ctx.createGain();
+    master.gain.value = 0.8;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    master.connect(analyser).connect(ctx.destination);
+    TRACKS.forEach((t) => {
+      const input = ctx.createGain();
+      const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 220;
+      const high = ctx.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 3200;
+      const pan = ctx.createStereoPanner();
+      const fader = ctx.createGain();
+      input.connect(low).connect(high).connect(pan).connect(fader).connect(master);
+      channels[t] = { input, low, high, pan, fader };
+    });
+    // The hidden whine: quiet and high, on the keys channel before its EQ.
+    const whine = ctx.createOscillator();
+    const whineGain = ctx.createGain();
+    whine.frequency.value = 3951; // B7
+    whineGain.gain.value = 0.014;
+    whine.connect(whineGain).connect(channels.keys.input);
+    whine.start();
+    applyMix();
+  }
+
+  const dbToGain = (db) => (db <= -30 ? 0 : Math.pow(10, db / 20));
+
+  function applyMix() {
+    if (!ctx) return;
+    const soloing = TRACKS.some((t) => mix[t].solo);
+    TRACKS.forEach((t) => {
+      const c = channels[t], m = mix[t];
+      const audible = !m.mute && (!soloing || m.solo);
+      c.low.gain.setTargetAtTime(m.low, ctx.currentTime, 0.02);
+      c.high.gain.setTargetAtTime(m.high, ctx.currentTime, 0.02);
+      c.pan.pan.setTargetAtTime(m.pan, ctx.currentTime, 0.02);
+      c.fader.gain.setTargetAtTime(audible ? dbToGain(m.fader) * 0.5 : 0, ctx.currentTime, 0.02);
+    });
+  }
+
+  // Small synth voices, each into its channel.
+  function env(node, t, peak, attack, decay) {
+    node.gain.setValueAtTime(0.0001, t);
+    node.gain.exponentialRampToValueAtTime(peak, t + attack);
+    node.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+  }
+  function tone(track, type, freq, t, peak, attack, decay, filterFreq) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    let out = osc;
+    if (filterFreq) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filterFreq; osc.connect(f); out = f; }
+    out.connect(g).connect(channels[track].input);
+    env(g, t, peak, attack, decay);
+    osc.start(t); osc.stop(t + attack + decay + 0.05);
+    return osc;
+  }
+  function noise(track, t, peak, decay, type, freq) {
+    const len = Math.ceil(ctx.sampleRate * (decay + 0.05));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = buf; f.type = type; f.frequency.value = freq;
+    src.connect(f).connect(g).connect(channels[track].input);
+    env(g, t, peak, 0.002, decay);
+    src.start(t);
+  }
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  // B major: B, G♯m, E, F♯, one bar each.
+  const CHORDS = [[59, 63, 66], [56, 59, 63], [52, 56, 59], [54, 58, 61]];
+  const BASS = [35, 32, 28, 30];
+  const LEAD = [ // [step within 64, midi, length in steps]
+    [0, 71, 2], [2, 73, 2], [4, 75, 4], [8, 73, 2], [10, 71, 2], [12, 68, 4],
+    [16, 68, 2], [18, 71, 2], [20, 73, 6], [28, 75, 4],
+    [32, 76, 2], [34, 75, 2], [36, 73, 4], [40, 71, 4], [44, 68, 4],
+    [48, 70, 2], [50, 71, 2], [52, 73, 4], [56, 70, 8],
+  ];
+
+  function playStep(s, t) {
+    const bar = Math.floor(s / 16), inBar = s % 16;
+    if (inBar % 4 === 0) { // kick on every beat
+      const k = tone('drums', 'sine', 150, t, 0.9, 0.003, 0.25);
+      k.frequency.setValueAtTime(150, t); k.frequency.exponentialRampToValueAtTime(45, t + 0.2);
+    }
+    if (inBar === 4 || inBar === 12) { noise('drums', t, 0.45, 0.16, 'bandpass', 1800); tone('drums', 'triangle', 190, t, 0.25, 0.002, 0.1); }
+    if (inBar % 2 === 0) noise('drums', t, inBar % 4 === 2 ? 0.16 : 0.09, 0.04, 'highpass', 7500);
+    if (inBar % 2 === 0) tone('bass', 'sawtooth', hz(BASS[bar] + (inBar % 8 === 6 ? 12 : 0)), t, 0.35, 0.005, STEP * 1.8, 700);
+    if (inBar === 0 || inBar === 8) CHORDS[bar].forEach((m) => tone('keys', 'triangle', hz(m), t, 0.12, 0.03, STEP * 7, 2400));
+    for (const [at, midi, len] of LEAD) if (at === s) tone('lead', 'square', hz(midi), t, 0.07, 0.01, STEP * len * 0.9, 3000);
+  }
+
+  function startLoop() {
+    if (!ctx) buildAudio();
+    if (scheduler) return;
+    step = 0;
+    nextTime = ctx.currentTime + 0.08;
+    scheduler = setInterval(() => {
+      while (nextTime < ctx.currentTime + 0.12) {
+        playStep(step, nextTime);
+        nextTime += STEP;
+        step = (step + 1) % 64;
+      }
+    }, 25);
+    ui.playBtn.textContent = '■ Stop';
+    meterLoop();
+  }
+  function stopLoop() {
+    clearInterval(scheduler);
+    scheduler = null;
+    ui.playBtn.textContent = '▶ Play';
+  }
+
+  function meterLoop() {
+    if (!scheduler) { ui.meter.style.height = '0'; return; }
+    const data = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(data);
+    let peak = 0;
+    for (const v of data) peak = Math.max(peak, Math.abs(v));
+    ui.meter.style.height = `${Math.min(100, peak * 110)}%`;
+    requestAnimationFrame(meterLoop);
+  }
+
+  // ---------- The desk ----------
+  function drawDesk() {
+    ui.desk.innerHTML = '';
+    TRACKS.forEach((t) => {
+      const strip = document.createElement('div');
+      strip.className = 'strip';
+      strip.dataset.track = t;
+      strip.innerHTML = `
+        <h3>${LABELS[t].toUpperCase()}</h3>
+        <label class="row"><span>HIGH</span><input type="range" data-ctl="high" min="-12" max="12" step="1"></label>
+        <label class="row"><span>LOW</span><input type="range" data-ctl="low" min="-12" max="12" step="1"></label>
+        <label class="row"><span>PAN</span><input type="range" data-ctl="pan" min="-1" max="1" step="0.05"></label>
+        <div class="fader-wrap"><input class="fader" type="range" data-ctl="fader" min="-30" max="12" step="0.5"><span class="db"></span></div>
+        <div class="ms"><button class="mute" data-ctl="mute">M</button><button class="solo" data-ctl="solo">S</button></div>`;
+      strip.querySelectorAll('input').forEach((input) => {
+        input.setAttribute('aria-label', `${LABELS[t]} ${input.dataset.ctl}`);
+        input.oninput = () => { mix[t][input.dataset.ctl] = Number(input.value); refresh(); applyMix(); };
+      });
+      strip.querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { mix[t][b.dataset.ctl] = !mix[t][b.dataset.ctl]; b.blur(); refresh(); applyMix(); };
+      });
+      ui.desk.appendChild(strip);
+    });
+    const m = document.createElement('div');
+    m.className = 'master';
+    m.innerHTML = '<div class="meter"><i></i></div><span>MASTER</span>';
+    ui.desk.appendChild(m);
+    ui.meter = m.querySelector('i');
+    refresh();
+  }
+
+  // Shows the mix's values on the desk.
+  function refresh() {
+    const soloing = TRACKS.some((t) => mix[t].solo);
+    TRACKS.forEach((t) => {
+      const strip = ui.desk.querySelector(`[data-track="${t}"]`);
+      strip.querySelectorAll('input').forEach((input) => { input.value = mix[t][input.dataset.ctl]; });
+      strip.querySelector('.db').textContent = mix[t].fader <= -30 ? '−∞' : `${mix[t].fader > 0 ? '+' : ''}${mix[t].fader} dB`;
+      strip.querySelector('.mute').classList.toggle('on', mix[t].mute);
+      strip.querySelector('.solo').classList.toggle('on', mix[t].solo);
+      strip.classList.toggle('dim', mix[t].mute || (soloing && !mix[t].solo));
+    });
+  }
+
+  function say(text, bad) {
+    ui.feedback.textContent = text;
+    ui.feedback.className = bad ? 'bad' : '';
+  }
+
+  function startRound() {
+    const r = ROUNDS[round];
+    tries = 0;
+    for (const [t, values] of Object.entries(r.set)) Object.assign(mix[t], values);
+    ui.round.textContent = `Round ${round + 1} of ${ROUNDS.length}`;
+    ui.problem.textContent = r.problem;
+    ui.check.disabled = false;
+    refresh();
+    applyMix();
+    say(round === 0 ? 'Press Play and listen. Use the desk to fix it, then check the mix.' : 'Press Check when it sounds right.');
+  }
+
+  // Muting or burying a part doesn't count as fixing it.
+  function everythingHeard() {
+    return TRACKS.every((t) => !mix[t].mute && mix[t].fader >= -15);
+  }
+
+  function check() {
+    const r = ROUNDS[round];
+    if (!everythingHeard()) return say('Every part still needs to be heard: unmute it, or bring its fader back up.', true);
+    if (!r.fixed(mix)) {
+      tries++;
+      Sound.buzz();
+      return say(tries >= 2 ? `Not yet. Hint: ${r.hint}` : 'Not yet. Listen again: what still sounds wrong?', true);
+    }
+    ui.check.disabled = true;
+    Sound.chord([59, 63, 66, 71], 0, 1.2, 0.3);
+    say(r.done);
+    round++;
+    if (round < ROUNDS.length) return setTimeout(startRound, 2600);
+    setTimeout(() => {
+      stopLoop();
+      Level.win({ heart: mix.keys.high <= WHINE_CUT });
+    }, 2600);
+  }
+
+  Level.setup({
+    description: 'A track in B major with a broken mix. Use the desk to make it sound right.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="top"><span class="round" id="round"></span><span id="problem"></span></div>
+        <div class="desk" id="desk"></div>
+        <div class="controls"><button id="playBtn">▶ Play</button><button class="primary" id="checkBtn">Check the mix</button></div>
+        <p id="feedback"></p>`;
+      ui = {
+        round: stage.querySelector('#round'), problem: stage.querySelector('#problem'), desk: stage.querySelector('#desk'),
+        playBtn: stage.querySelector('#playBtn'), check: stage.querySelector('#checkBtn'), feedback: stage.querySelector('#feedback'),
+      };
+      ui.playBtn.onclick = () => { ui.playBtn.blur(); scheduler ? stopLoop() : startLoop(); };
+      ui.check.onclick = () => { ui.check.blur(); check(); };
+      drawDesk();
+      startRound();
+    },
+  });
+</script>
+</body>
+</html>
