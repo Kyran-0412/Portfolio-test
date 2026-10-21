@@ -26,6 +26,38 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## Level 6: Fix the Mix (and the piano only where it's needed)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-b.html` | Level B page's Embed HTML box (replaces the placeholder) |
+| `wix/embeds/level-g.html` | Level G page's box (no piano) |
+| `wix/embeds/level-d.html` | Level D page's box (no piano) |
+| `wix/embeds/level-e.html` | Level E page's box (full keyboard) |
+
+The on-screen piano only shows on levels that use it: Tutorial, Feedback and Melody Memory.
+Hidden heart: a hidden fifth track. A small + at the end of the desk shows it; unmute it and blend it in before finishing.
+
+## Level 5: Melody Memory, and hidden hearts
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/public/progress.js` | Public file `progress.js` (saves hidden hearts) |
+| `wix/public/game-site.js` | Public file `game-site.js` (passes hidden hearts to levels) |
+| `wix/embeds/level-e.html` | Level E page's Embed HTML box (replaces the placeholder) |
+| `wix/embeds/level-a.html` | Level A page's box (boss fights start with the extra hearts) |
+
+Hidden heart: finish all six rounds with no mistakes. Each heart found adds a heart at the start of every boss fight.
+
+## MIDI keyboard (tested, dropped)
+
+`wix/embeds/midi-test.html` checks whether a MIDI keyboard works inside a Wix embed box.
+Result on the site: Wix's boxes block MIDI, so the game stays on the computer keyboard.
+
 ## Level 4: Feedback (boss fight)
 
 **Files to update in Wix**
