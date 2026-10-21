@@ -37,6 +37,14 @@ try {
   assert.deepEqual(await fired(), ['single']);
   console.log('✓ phase 1: only the root fires; other keys are greyed out');
 
+  // The boss's single notes fly faster than its chords.
+  await calm();
+  await S(() => { const s = window.__boss; fire({ kind: 'note', midi: 57, tx: s.player.x }); fire({ kind: 'chord', triad: { notes: [57, 61, 64], major: true }, tx: s.player.x }); });
+  const speeds = await S(() => window.__boss.notes.map((n) => [n.kind, Math.round(Math.hypot(n.vx, n.vy))]));
+  assert.equal(speeds[0][1], 250, 'single note: 200 × 1.25');
+  assert.ok(speeds.slice(1).every(([kind, v]) => kind === 'chord' && v === 200), 'chords unchanged');
+  console.log('✓ boss single notes fly 25% faster than its chords');
+
   // Cancelling an A with an A refunds it; the boss still has the whole scale.
   await calm();
   await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 0, midi: 57, pc: 9, kind: 'note', label: true }); });

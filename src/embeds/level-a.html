@@ -65,6 +65,7 @@
     power: { cost: 16, damage: 5, speed: 820, refund: 8 },    // root + fifth
     triad: { cost: 24, damage: 3, speed: 600, refund: 8 },    // root + third + fifth: three notes, damage each
   };
+  const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
   const CUT_DAMAGE = 14;      // playing the held chord's missing note
   let thirdFound = false;     // stays found if you retry phase 3
@@ -269,10 +270,13 @@
     const ph = PHASES[S.phase];
     const ox = S.boss.x, oy = S.boss.y + 44;
     const base = Math.atan2(S.player.y - oy, w.tx - ox);
-    const launch = (midi, angle, kind) => S.notes.push({
-      x: ox, y: oy, vx: Math.cos(angle) * ph.speed, vy: Math.sin(angle) * ph.speed,
+    const launch = (midi, angle, kind) => {
+      const speed = ph.speed * (kind === 'note' ? NOTE_SPEED : 1);
+      S.notes.push({
+      x: ox, y: oy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       midi, pc: midi % 12, kind, label: ph.labels,
-    });
+      });
+    };
     if (w.kind === 'note') {
       launch(w.midi, base, 'note');
       Sound.note(w.midi, 0, 0.45, 0.4);
