@@ -25,10 +25,26 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-dflat.html` | Level 8, Chord Progression | Level D♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-aflat.html` | Level 9, Survival Waves (zombies) | Level A♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-eflat.html` | Level 10, Beat Rebuild | Level E♭ page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-bflat.html` | Level 11, Arpeggio Rush | Level B♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 11: Arpeggio Rush (replaces Arpeggio Maze)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-bflat.html` | Level B♭ page's Embed HTML box (replaces the placeholder) |
+| `wix/embeds/circle.html` | Circle of Fifths page's `circle` box (new level name in a tooltip) |
+
+A falling-notes rhythm game in B♭. Hit notes on the line with D F J K. The four lanes are the chord's
+root, 3rd, 5th and octave, and they change note with the chords (B♭–Gm–E♭–F). The song runs Verse,
+Chorus, Bridge, Solo and Finale (about a minute). Misses and stray presses drain the crowd meter; if it
+empties you retry that section. Clicking away pauses the song. The level's name is now Arpeggio Rush,
+so also re-paste `wix/embeds/circle.html` (its tooltips name each beaten level).
 
 ## Level 10: Beat Rebuild
 

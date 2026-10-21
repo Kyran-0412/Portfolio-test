@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 11: Arpeggio Rush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 8px; }
+  .arena { position: relative; width: 900px; max-width: 100%; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
+  .overlay {
+    position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(18, 17, 22, 0.94); border-radius: 10px; text-align: center; padding: 16px;
+  }
+  .overlay.show { display: flex; animation: fade-in 0.3s ease-out both; }
+  .overlay h2 { margin: 0; font: 600 34px var(--heading); letter-spacing: 0.02em; }
+  .overlay p { max-width: 460px; }
+  .overlay .buttons { margin-top: 4px; }
+  .keys-help { display: flex; gap: 10px; margin: 6px 0; }
+  .keys-help kbd {
+    width: 46px; height: 46px; display: grid; place-items: center; border-radius: 8px;
+    font: 600 20px var(--heading); color: var(--glow); background: var(--panel); border: 1px solid var(--mid);
+  }
+  .stats { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 22px; margin: 6px 0; }
+  .stats b { display: block; font: 600 26px var(--heading); color: var(--glow); }
+  .stats span { font: 500 11px var(--heading); letter-spacing: 0.14em; text-transform: uppercase; color: var(--quiet); }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 11, key of B♭: a rhythm game. Notes fall down four lanes and you hit
+  // them on the line with D F J K. The lanes are the current chord's root, 3rd,
+  // 5th and octave, so every pattern is an arpeggio; when the chord changes,
+  // the lanes change note. Lose the crowd and you retry the section.
+  const W = 900, H = 560;
+  const BPM = 104;
+  const BEAT = 60 / BPM, BAR = BEAT * 4, STEP = BEAT / 2; // backing runs in 8ths
+  const LANE_KEYS = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
+  const LANE_LABELS = ['D', 'F', 'J', 'K'];
+  const LANE_COLOURS = ['#C8B8FF', '#9A7FE0', '#ff8fa6', '#d9c27a'];
+  const LEAD = 1.5;               // seconds a note takes to fall to the line
+  const PERFECT = 0.05, GOOD = 0.11, LATE = 0.15; // timing windows, seconds
+  const LANE_W = 96, HX = (W - LANE_W * 4) / 2, HIT_Y = H - 92;
+  const SPEED = (HIT_Y + 20) / LEAD;
+
+  // I–vi–IV–V in B♭. Lane pitches (MIDI) and names for each chord.
+  const CHORDS = {
+    Bb: { name: 'B♭', midi: [58, 62, 65, 70], names: ['B♭', 'D', 'F', 'B♭'] },
+    Gm: { name: 'Gm', midi: [55, 58, 62, 67], names: ['G', 'B♭', 'D', 'G'] },
+    Eb: { name: 'E♭', midi: [63, 67, 70, 75], names: ['E♭', 'G', 'B♭', 'E♭'] },
+    F:  { name: 'F',  midi: [53, 57, 60, 65], names: ['F', 'A', 'C', 'F'] },
+  };
+  const LOOP = ['Bb', 'Gm', 'Eb', 'F'];
+
+  // Each pattern is a list of bars (used in turn): [beat, lane or [lanes]].
+  const PATTERNS = {
+    verse: [[[0, 0], [1, 1], [2, 2], [3, 3]]],
+    chorus: [
+      [[0, 0], [0.5, 1], [1, 2], [1.5, 3], [2, 2], [2.5, 1], [3, 0], [3.5, 1]],
+      [[0, 3], [0.5, 2], [1, 1], [1.5, 0], [2, 1], [2.5, 2], [3, 3]],
+    ],
+    bridge: [
+      [[0, [0, 2]], [1.5, 1], [2, 3], [2.5, 2], [3.5, 1]],
+      [[0, [0, 3]], [1, 2], [1.5, 1], [2.5, [1, 3]], [3, 2]],
+    ],
+    solo: [
+      [[0, 0], [0.25, 1], [0.5, 2], [0.75, 3], [1, 2], [1.5, 1], [2, [1, 3]], [3, 0], [3.5, 2]],
+      [[0, 3], [0.25, 2], [0.5, 1], [0.75, 0], [1, 1], [1.5, 2], [2, [0, 2]], [2.5, 3], [3, 3]],
+    ],
+    finale: [[[0, [0, 1, 2, 3]]], []],
+  };
+  const SECTIONS = [
+    { name: 'Count-in', bars: 2 },
+    { name: 'Verse', bars: 4, pattern: 'verse' },
+    { name: 'Chorus', bars: 8, pattern: 'chorus' },
+    { name: 'Bridge', bars: 8, pattern: 'bridge' },
+    { name: 'Solo', bars: 4, pattern: 'solo' },
+    { name: 'Finale', bars: 2, pattern: 'finale', chord: 'Bb' },
+  ];
+
+  // ---------- Build the song ----------
+  const bars = [];   // { chord, section }
+  const notes = [];  // { t, lane, midi, name, bar, judged }
+  SECTIONS.forEach((sec, si) => {
+    sec.start = bars.length * BAR;
+    sec.index = si;
+    for (let b = 0; b < sec.bars; b++) {
+      const barNo = bars.length;
+      const chord = si === 0 ? null : (sec.chord || LOOP[(barNo - SECTIONS[0].bars) % 4]);
+      bars.push({ chord, section: si });
+      if (!sec.pattern) continue;
+      const pat = PATTERNS[sec.pattern];
+      for (const [beat, lanes] of pat[b % pat.length]) {
+        for (const lane of [].concat(lanes)) {
+          notes.push({ t: barNo * BAR + beat * BEAT, lane, midi: CHORDS[chord].midi[lane], name: CHORDS[chord].names[lane], bar: barNo, judged: null });
+        }
+      }
+    }
+  });
+  const SONG_END = bars.length * BAR;
+
+  // ---------- State ----------
+  let canvas, g, ui = {};
+  let actx = null, out = null, songStart = 0, nextStep = 0, scheduler = null;
+  let state = 'ready'; // ready, playing, failed, done
+  let paused = false, section = 0;
+  let meter = 50, combo = 0, bestCombo = 0, score = 0;
+  let counts = { perfect: 0, good: 0, miss: 0 };
+  const held = [false, false, false, false];
+  const flashes = [0, 0, 0, 0];
+  let popups = []; // { text, colour, t0, lane }
+  let sparks = [];
+
+  window.__rush = {
+    notes, sections: SECTIONS, autoplay: false,
+    get state() { return state; }, get meter() { return meter; }, set meter(v) { meter = v; },
+    get combo() { return combo; }, get counts() { return counts; }, get section() { return section; },
+    get time() { return songTime(); }, seek: (t) => seek(t),
+  };
+
+  // ---------- Audio ----------
+  function audio() {
+    if (!actx) {
+      actx = Sound.unlock();
+      out = actx.createGain();
+      out.gain.value = 0.7;
+      const comp = actx.createDynamicsCompressor();
+      out.connect(comp).connect(actx.destination);
+    }
+    return actx;
+  }
+  const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  function env(gain, t, peak, attack, decay) {
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+  }
+  function tone(type, freq, t, peak, attack, decay, cutoff) {
+    const o = actx.createOscillator(), gn = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    let node = o;
+    if (cutoff) { const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; o.connect(f); node = f; }
+    node.connect(gn).connect(out);
+    env(gn, t, peak, attack, decay);
+    o.start(t); o.stop(t + attack + decay + 0.05);
+    return o;
+  }
+  function noise(t, peak, decay, type, freq) {
+    const len = Math.ceil(actx.sampleRate * (decay + 0.02));
+    const buf = actx.createBuffer(1, len, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(), f = actx.createBiquadFilter(), gn = actx.createGain();
+    src.buffer = buf; f.type = type; f.frequency.value = freq;
+    src.connect(f).connect(gn).connect(out);
+    gn.gain.setValueAtTime(peak, t);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    src.start(t);
+  }
+  // The note you play: a bright pluck, loud enough to lead the band.
+  function pluck(midi, t = actx.currentTime + 0.005) {
+    tone('sawtooth', hz(midi), t, 0.16, 0.004, 0.45, 2600);
+    tone('triangle', hz(midi + 12), t, 0.08, 0.004, 0.25);
+  }
+  function deadNote() { noise(actx.currentTime + 0.005, 0.18, 0.07, 'bandpass', 900); }
+
+  // One 8th-note step of the band.
+  function backing(step, t) {
+    const bar = Math.floor(step / 8), i = step % 8;
+    if (bar >= bars.length) return;
+    const { chord, section: si } = bars[bar];
+    if (!chord) { // count-in clicks
+      if (i % 2 === 0) tone('square', i === 0 ? 1760 : 1320, t, 0.08, 0.002, 0.05);
+      return;
+    }
+    const c = CHORDS[chord];
+    if (SECTIONS[si].pattern === 'finale') {
+      if (bar === SECTIONS[si].start / BAR && i === 0) {
+        const k = tone('sine', 150, t, 0.9, 0.003, 0.5); k.frequency.exponentialRampToValueAtTime(40, t + 0.4);
+        noise(t, 0.35, 1.6, 'highpass', 5000);
+        [c.midi[0] - 24, c.midi[0] - 12].forEach((m) => tone('sawtooth', hz(m), t, 0.22, 0.01, 2.4, 600));
+        c.midi.slice(0, 3).forEach((m) => tone('triangle', hz(m), t, 0.07, 0.05, 3.2, 2000));
+      }
+      return;
+    }
+    const busy = si >= 2;
+    if (i === 0 || i === 4 || (busy && i === 7)) {
+      const k = tone('sine', 150, t, 0.85, 0.003, 0.26); k.frequency.exponentialRampToValueAtTime(44, t + 0.2);
+    }
+    if (i === 2 || i === 6) { noise(t, 0.32, 0.15, 'bandpass', 1800); tone('triangle', 190, t, 0.18, 0.002, 0.09); }
+    noise(t, i % 2 ? 0.07 : 0.11, 0.04, 'highpass', 7600);
+    if (i === 0 || i === 3 || i === 4 || (busy && i === 6)) tone('sawtooth', hz(c.midi[0] - 24), t, 0.28, 0.005, STEP * 1.6, 520);
+    if (i === 0) c.midi.slice(0, 3).forEach((m) => tone('triangle', hz(m - 12), t, 0.035, 0.08, BAR * 0.9, 1400));
+  }
+
+  function tick() {
+    if (paused) return;
+    while (songStart + nextStep * STEP < actx.currentTime + 0.12) {
+      backing(nextStep, songStart + nextStep * STEP);
+      nextStep++;
+    }
+  }
+
+  const songTime = () => (actx ? actx.currentTime - songStart : 0);
+
+  // Jumps the song to time t. Notes before `from` are left out.
+  function seek(t, from = t) {
+    audio();
+    songStart = actx.currentTime + 0.05 - t;
+    nextStep = Math.max(0, Math.ceil((t - 0.01) / STEP));
+    notes.forEach((n) => { n.judged = n.t < from - 0.001 ? 'skip' : null; });
+    popups = []; sparks = [];
+    section = sectionAt(Math.max(from, 0));
+  }
+  function sectionAt(t) {
+    let s = 0;
+    SECTIONS.forEach((sec, i) => { if (t >= sec.start - 0.001) s = i; });
+    return s;
+  }
+
+  // ---------- Playing ----------
+  function startSong(fromSection = 0) {
+    audio();
+    const sec = SECTIONS[fromSection];
+    // A bar of run-up before a retried section, with its notes left out.
+    seek(fromSection === 0 ? -0.3 : sec.start - BAR, sec.start);
+    if (fromSection > 0) section = fromSection;
+    meter = 50; combo = 0;
+    if (fromSection === 0) { counts = { perfect: 0, good: 0, miss: 0 }; score = 0; bestCombo = 0; }
+    state = 'playing';
+    ui.ready.classList.remove('show');
+    ui.failed.classList.remove('show');
+    clearInterval(scheduler);
+    scheduler = setInterval(tick, 25);
+    tick();
+  }
+
+  const multiplier = () => Math.min(4, 1 + Math.floor(combo / 10));
+
+  function judge(n, kind) {
+    n.judged = kind;
+    counts[kind]++;
+    if (kind === 'miss') {
+      combo = 0;
+      meter -= 6;
+      popups.push({ text: 'MISS', colour: '#e7a3b0', t0: performance.now(), lane: n.lane });
+    } else {
+      combo++;
+      bestCombo = Math.max(bestCombo, combo);
+      score += (kind === 'perfect' ? 100 : 60) * multiplier();
+      meter = Math.min(100, meter + (kind === 'perfect' ? 2.5 : 1.5));
+      popups.push({ text: kind === 'perfect' ? 'PERFECT' : 'GOOD', colour: kind === 'perfect' ? '#C8B8FF' : '#9A7FE0', t0: performance.now(), lane: n.lane });
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI - Math.PI;
+        sparks.push({ x: laneX(n.lane), y: HIT_Y, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, life: 0.4, colour: LANE_COLOURS[n.lane] });
+      }
+    }
+    if (meter <= 0) fail();
+  }
+
+  function press(lane) {
+    if (state !== 'playing' || paused) return;
+    flashes[lane] = performance.now();
+    const now = songTime();
+    let best = null;
+    for (const n of notes) {
+      if (n.judged || n.lane !== lane) continue;
+      const dt = Math.abs(n.t - now);
+      if (dt <= GOOD && (!best || dt < Math.abs(best.t - now))) best = n;
+      if (n.t - now > GOOD) break;
+    }
+    if (!best) {
+      // A press with nothing to hit: a dead string, and the streak ends.
+      deadNote();
+      combo = 0;
+      meter -= 2;
+      if (meter <= 0) fail();
+      return;
+    }
+    pluck(best.midi);
+    judge(best, Math.abs(best.t - now) <= PERFECT ? 'perfect' : 'good');
+  }
+
+  function fail() {
+    meter = 0;
+    state = 'failed';
+    clearInterval(scheduler);
+    Sound.buzz();
+    ui.failedText.textContent = `You lost the crowd in the ${SECTIONS[section].name.toLowerCase()}.`;
+    ui.retryBtn.textContent = `Retry the ${SECTIONS[section].name.toLowerCase()}`;
+    ui.failed.classList.add('show');
+  }
+
+  function finish() {
+    state = 'done';
+    clearInterval(scheduler);
+    const total = counts.perfect + counts.good + counts.miss;
+    const accuracy = total ? Math.round(((counts.perfect + counts.good * 0.6) / total) * 100) : 100;
+    ui.stats.innerHTML = [['Accuracy', `${accuracy}%`], ['Best streak', bestCombo], ['Perfect', counts.perfect], ['Missed', counts.miss]]
+      .map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join('');
+    ui.done.classList.add('show');
+  }
+
+  function update() {
+    if (state !== 'playing' || paused) return;
+    const now = songTime();
+    section = Math.max(section, sectionAt(now));
+    for (const n of notes) {
+      if (n.judged) continue;
+      if (window.__rush.autoplay && now >= n.t - 0.005) { flashes[n.lane] = performance.now(); pluck(n.midi); judge(n, 'perfect'); continue; }
+      if (now - n.t > LATE) judge(n, 'miss');
+      if (state !== 'playing') return;
+      if (n.t > now + 0.2) break;
+    }
+    if (now > SONG_END - BAR + 0.6) finish();
+  }
+
+  // ---------- Drawing ----------
+  const laneX = (lane) => HX + LANE_W * lane + LANE_W / 2;
+  const yAt = (t, now) => HIT_Y - (t - now) * SPEED;
+  function chordAt(t) {
+    const b = bars[Math.max(0, Math.min(bars.length - 1, Math.floor(t / BAR)))];
+    return b && b.chord ? CHORDS[b.chord] : null;
+  }
+
+  function roundRect(x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+
+  function draw() {
+    const now = state === 'ready' ? -LEAD : songTime();
+    const real = performance.now();
+    g.clearRect(0, 0, W, H);
+
+    // Highway
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#16141b'); grad.addColorStop(1, '#221e2a');
+    g.fillStyle = grad;
+    g.fillRect(HX, 0, LANE_W * 4, H);
+    for (let l = 0; l <= 4; l++) {
+      g.fillStyle = l === 0 || l === 4 ? '#5e3e84' : '#2c2934';
+      g.fillRect(HX + l * LANE_W - 1, 0, 2, H);
+    }
+    for (let l = 0; l < 4; l++) {
+      const age = (real - flashes[l]) / 1000;
+      if (held[l] || age < 0.15) {
+        const lg = g.createLinearGradient(0, HIT_Y - 220, 0, HIT_Y);
+        lg.addColorStop(0, 'rgba(154,127,224,0)'); lg.addColorStop(1, LANE_COLOURS[l] + '44');
+        g.fillStyle = lg;
+        g.fillRect(HX + l * LANE_W + 1, HIT_Y - 220, LANE_W - 2, 220);
+      }
+    }
+
+    // Beat lines and chord changes
+    const firstBeat = Math.floor(now / BEAT) - 1;
+    for (let b = firstBeat; b < firstBeat + 12; b++) {
+      const t = b * BEAT;
+      if (t < 0 || t > SONG_END) continue;
+      const y = yAt(t, now);
+      if (y < -10 || y > H) continue;
+      const barStart = b % 4 === 0;
+      g.fillStyle = barStart ? 'rgba(154,127,224,0.4)' : 'rgba(255,255,255,0.05)';
+      g.fillRect(HX, y - (barStart ? 1 : 0.5), LANE_W * 4, barStart ? 2 : 1);
+      if (barStart) {
+        const c = bars[b / 4] && bars[b / 4].chord;
+        if (c) {
+          g.font = '600 18px Oswald, sans-serif';
+          g.textAlign = 'right';
+          g.fillStyle = '#C8B8FF';
+          g.fillText(CHORDS[c].name, HX - 12, y + 6);
+        }
+      }
+    }
+
+    // Notes
+    g.textAlign = 'center';
+    for (const n of notes) {
+      if (n.judged && n.judged !== 'miss') continue;
+      const y = yAt(n.t, now);
+      if (y < -30) break;
+      if (y > H + 30) continue;
+      const x = laneX(n.lane);
+      g.globalAlpha = n.judged === 'miss' ? 0.25 : 1;
+      g.fillStyle = LANE_COLOURS[n.lane];
+      g.shadowColor = LANE_COLOURS[n.lane];
+      g.shadowBlur = 12;
+      roundRect(x - 36, y - 12, 72, 24, 12);
+      g.fill();
+      g.shadowBlur = 0;
+      g.fillStyle = '#181818';
+      g.font = '600 14px Oswald, sans-serif';
+      g.fillText(n.name, x, y + 5);
+      g.globalAlpha = 1;
+    }
+
+    // Hit line and the keys
+    g.fillStyle = 'rgba(200,184,255,0.6)';
+    g.fillRect(HX, HIT_Y - 1, LANE_W * 4, 2);
+    const current = chordAt(Math.max(now, 0));
+    for (let l = 0; l < 4; l++) {
+      const x = laneX(l);
+      const lit = held[l] || (real - flashes[l]) < 120;
+      g.beginPath();
+      g.arc(x, HIT_Y, 26, 0, Math.PI * 2);
+      g.fillStyle = lit ? LANE_COLOURS[l] : '#1d1b22';
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = LANE_COLOURS[l];
+      g.stroke();
+      g.fillStyle = lit ? '#181818' : LANE_COLOURS[l];
+      g.font = '600 20px Oswald, sans-serif';
+      g.fillText(LANE_LABELS[l], x, HIT_Y + 7);
+      g.fillStyle = '#a49cad';
+      g.font = '500 13px Oswald, sans-serif';
+      g.fillText(current ? current.names[l] : '', x, HIT_Y + 50);
+    }
+    g.font = '500 10px Oswald, sans-serif';
+    g.fillStyle = '#6f6879';
+    ['ROOT', '3RD', '5TH', 'OCTAVE'].forEach((t, l) => g.fillText(t, laneX(l), HIT_Y + 66));
+
+    // Sparks and judgements
+    const dt = 1 / 60;
+    sparks = sparks.filter((s) => (s.life -= dt) > 0);
+    for (const s of sparks) {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 400 * dt;
+      g.globalAlpha = s.life / 0.4;
+      g.fillStyle = s.colour;
+      g.fillRect(s.x - 2, s.y - 2, 4, 4);
+    }
+    g.globalAlpha = 1;
+    popups = popups.filter((p) => real - p.t0 < 600);
+    for (const p of popups.slice(-4)) {
+      const age = (real - p.t0) / 600;
+      g.globalAlpha = 1 - age;
+      g.fillStyle = p.colour;
+      g.font = '600 16px Oswald, sans-serif';
+      g.fillText(p.text, laneX(p.lane), HIT_Y - 40 - age * 30);
+    }
+    g.globalAlpha = 1;
+
+    drawHud(now);
+    if (paused && state === 'playing') {
+      g.fillStyle = 'rgba(18,17,22,0.7)';
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = '#C8B8FF';
+      g.font = '600 30px Oswald, sans-serif';
+      g.textAlign = 'center';
+      g.fillText('PAUSED', W / 2, H / 2);
+    }
+  }
+
+  function drawHud(now) {
+    // Left: section, score, streak
+    g.textAlign = 'left';
+    g.fillStyle = '#9A7FE0';
+    g.font = '500 12px Oswald, sans-serif';
+    g.fillText('SECTION', 28, 40);
+    g.fillText('SCORE', 28, 110);
+    g.fillText('STREAK', 28, 180);
+    g.fillStyle = '#f2eef7';
+    g.font = '600 26px Oswald, sans-serif';
+    g.fillText(SECTIONS[section].name, 28, 70);
+    g.fillText(String(score), 28, 140);
+    g.fillText(String(combo), 28, 210);
+    if (multiplier() > 1) {
+      g.fillStyle = '#d9c27a';
+      g.font = '600 18px Oswald, sans-serif';
+      g.fillText(`×${multiplier()}`, 28 + g.measureText(String(combo)).width + 60, 210);
+    }
+
+    // Song progress along the top of the highway
+    g.fillStyle = '#2c2934';
+    g.fillRect(HX, 6, LANE_W * 4, 4);
+    g.fillStyle = '#C8B8FF';
+    g.fillRect(HX, 6, LANE_W * 4 * Math.max(0, Math.min(1, now / SONG_END)), 4);
+
+    // Right: the crowd meter
+    const mx = W - 70, my = 60, mh = 380;
+    g.textAlign = 'center';
+    g.fillStyle = '#9A7FE0';
+    g.font = '500 12px Oswald, sans-serif';
+    g.fillText('CROWD', mx + 10, my - 14);
+    g.fillStyle = '#121116';
+    g.strokeStyle = '#2c2934';
+    g.lineWidth = 1;
+    roundRect(mx, my, 20, mh, 6);
+    g.fill(); g.stroke();
+    const fill = Math.max(0, meter) / 100 * mh;
+    const mg = g.createLinearGradient(0, my + mh, 0, my);
+    mg.addColorStop(0, '#ff5d7a'); mg.addColorStop(0.3, '#9A7FE0'); mg.addColorStop(1, '#C8B8FF');
+    g.fillStyle = mg;
+    roundRect(mx + 2, my + mh - fill + 2, 16, Math.max(0, fill - 4), 4);
+    g.fill();
+  }
+
+  function frame() {
+    update();
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Keys and focus ----------
+  window.addEventListener('keydown', (e) => {
+    const lane = LANE_KEYS.indexOf(e.code);
+    if (lane < 0) return;
+    e.preventDefault();
+    if (e.repeat) return;
+    held[lane] = true;
+    press(lane);
+  });
+  window.addEventListener('keyup', (e) => {
+    const lane = LANE_KEYS.indexOf(e.code);
+    if (lane >= 0) held[lane] = false;
+  });
+  // Leaving the game pauses the song; coming back picks it up again.
+  window.addEventListener('blur', () => {
+    held.fill(false);
+    if (state === 'playing' && actx) { paused = true; actx.suspend(); }
+  });
+  window.addEventListener('focus', () => {
+    if (paused && actx) { actx.resume(); paused = false; }
+  });
+
+  Level.setup({
+    description: 'Notes fall in B♭. Hit them on the line and keep the crowd with you.',
+    piano: false,
+    start(stage) {
+      stage.innerHTML = `
+        <div class="arena">
+          <canvas id="rush" width="${W}" height="${H}"></canvas>
+          <div class="overlay show" id="ready">
+            <h2>Arpeggio Rush</h2>
+            <p>Hit each note as it reaches the line. The four lanes are the chord’s root, 3rd, 5th and octave, so they change note when the chord does.</p>
+            <div class="keys-help"><kbd>D</kbd><kbd>F</kbd><kbd>J</kbd><kbd>K</kbd></div>
+            <p>Miss too many and you lose the crowd.</p>
+            <div class="buttons"><button class="primary" id="goBtn">Play</button></div>
+          </div>
+          <div class="overlay" id="failed">
+            <h2>The crowd’s gone quiet</h2>
+            <p id="failedText"></p>
+            <div class="buttons"><button class="primary" id="retryBtn">Retry</button><button id="restartBtn">Start the song again</button></div>
+          </div>
+          <div class="overlay" id="done">
+            <h2>Encore!</h2>
+            <div class="stats" id="stats"></div>
+            <div class="buttons"><button class="primary" id="takeBtn">Take the key</button></div>
+          </div>
+        </div>`;
+      const $ = (id) => stage.querySelector('#' + id);
+      canvas = $('rush');
+      g = canvas.getContext('2d');
+      ui = { ready: $('ready'), failed: $('failed'), failedText: $('failedText'), retryBtn: $('retryBtn'), done: $('done'), stats: $('stats') };
+      $('goBtn').onclick = (e) => { e.target.blur(); startSong(0); };
+      $('retryBtn').onclick = (e) => { e.target.blur(); startSong(section); };
+      $('restartBtn').onclick = (e) => { e.target.blur(); startSong(0); };
+      $('takeBtn').onclick = (e) => { e.target.blur(); Level.win(); };
+      requestAnimationFrame(frame);
+    },
+  });
+</script>
+</body>
+</html>
