@@ -52,7 +52,7 @@ try {
   await chord('a');
   await frame.waitForFunction(() => window.__boss.notes.length === 0, null, { timeout: 2000 });
   assert.ok(await S(() => window.__boss.meter < 1), 'refunded');
-  assert.equal(hp0 - (await S(() => window.__boss.boss.hp)), 3, 'cancel reflects damage');
+  assert.equal(hp0 - (await S(() => window.__boss.boss.hp)), 2, 'cancel reflects damage (3 ÷ 1.5 health)');
   console.log('✓ firing the same note cancels it, refunds it and reflects damage');
 
   // Phase 2 at 60%: the fifth unlocks. E alone is a single; A + E is a power shot.

@@ -47,9 +47,9 @@
   ];
   // Phases start at these boss health levels; each is faster and harder.
   const PHASES = [
-    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 50, name: 'Phase 1: root only' },
-    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 70, name: 'Fifth unlocked! Hold A + E for a power shot' },
-    { from: 30, speed: 290, warn: 0.55, gap: 1.05, chords: 0.5, labels: false, lead: 0.55, drift: 90, name: 'Phase 3: full volume' },
+    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 85, name: 'Phase 1: root only' },
+    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 115, name: 'Fifth unlocked! Hold A + E for a power shot' },
+    { from: 30, speed: 290, warn: 0.55, gap: 1.05, chords: 0.5, labels: false, lead: 0.55, drift: 145, name: 'Phase 3: full volume' },
   ];
 
   // You build A major's triad over the fight: root (A), then fifth (E), then
@@ -65,6 +65,9 @@
     power: { cost: 16, damage: 5, speed: 820, refund: 8 },    // root + fifth
     triad: { cost: 24, damage: 3, speed: 600, refund: 8 },    // root + third + fifth: three notes, damage each
   };
+  const BOSS_SIZE = 0.72;     // drawing and hitbox scale
+  const BOSS_HEALTH = 1.5;    // damage is divided by this: higher = tougher boss
+  const MUZZLE = 44 * BOSS_SIZE; // where notes leave the speaker, below its centre
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
   const CUT_DAMAGE = 14;      // playing the held chord's missing note
@@ -268,7 +271,7 @@
 
   function fire(w) {
     const ph = PHASES[S.phase];
-    const ox = S.boss.x, oy = S.boss.y + 44;
+    const ox = S.boss.x, oy = S.boss.y + MUZZLE;
     const base = Math.atan2(S.player.y - oy, w.tx - ox);
     const launch = (midi, angle, kind) => {
       const speed = ph.speed * (kind === 'note' ? NOTE_SPEED : 1);
@@ -321,7 +324,7 @@
   // Missing the held chord: it squeals out a fan of notes.
   function squealBurst() {
     const ph = PHASES[S.phase];
-    const ox = S.boss.x, oy = S.boss.y + 44;
+    const ox = S.boss.x, oy = S.boss.y + MUZZLE;
     [-0.6, -0.3, 0, 0.3, 0.6].forEach((off, i) => {
       const a = Math.PI / 2 + off;
       const midi = SCALE[i + 1];
@@ -333,7 +336,7 @@
   // ---------- Damage ----------
   function damage(amount) {
     const b = S.boss;
-    b.hp = Math.max(0, b.hp - amount);
+    b.hp = Math.max(0, b.hp - amount / BOSS_HEALTH);
     b.flash = 0.15;
     Sound.hit();
     if (b.hp <= 0) return win();
@@ -437,7 +440,7 @@
     p.shield = Math.max(0, p.shield - dt);
 
     // Boss drifts to a new spot now and then; in phase 3 it follows you.
-    if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.3) b.target = rand(110, W - 110);
+    if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.5) b.target = rand(110, W - 110);
     if (S.phase === 2) b.target = b.target * 0.98 + p.x * 0.02;
     if (b.stun <= 0) b.x += Math.sign(b.target - b.x) * Math.min(Math.abs(b.target - b.x), ph.drift * dt);
     b.stun = Math.max(0, b.stun - dt);
@@ -492,7 +495,7 @@
           if (!S.running) return;
         }
       }
-      if (!s.gone && Math.abs(s.x - b.x) < 74 && s.y < b.y + 48 && s.y > b.y - 40) {
+      if (!s.gone && Math.abs(s.x - b.x) < 74 * BOSS_SIZE && s.y < b.y + 48 * BOSS_SIZE && s.y > b.y - 40 * BOSS_SIZE) {
         s.gone = true;
         damage(s.damage);
         spark(s.x, b.y + 40, '#9A7FE0');
@@ -546,7 +549,7 @@
       ctx.setLineDash([6, 8]);
       ctx.strokeStyle = `rgba(200, 184, 255, ${0.15 + k * 0.45})`;
       ctx.lineWidth = 2;
-      const ox = b.x, oy = b.y + 44;
+      const ox = b.x, oy = b.y + MUZZLE;
       const base = Math.atan2(p.y - oy, w.tx - ox);
       const angles = w.kind === 'chord' ? [-1, 0, 1].map((i) => base + i * (w.triad.major ? 0.3 : 0.14)) : [base];
       for (const a of angles) { ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(a) * 420, oy + Math.sin(a) * 420); ctx.stroke(); }
@@ -558,7 +561,7 @@
     // Held chord, shown above the boss's head... well, under it
     if (S.held) {
       const h = S.held;
-      const y = b.y + 92;
+      const y = b.y + 74;
       ctx.font = '600 12px Oswald, sans-serif'; ctx.textAlign = 'center';
       ctx.fillStyle = '#9A93A3'; ctx.fillText(`${h.triad.name} chord · play the missing note`, b.x, y - 14);
       h.triad.notes.forEach((m, i) => {
@@ -576,7 +579,7 @@
 
     // The third-unlock moment: A ? E
     if (S.moment) {
-      const y = b.y + 92;
+      const y = b.y + 74;
       ctx.font = '600 12px Oswald, sans-serif'; ctx.textAlign = 'center';
       ctx.fillStyle = '#9A93A3'; ctx.fillText('Find the missing note', b.x, y - 14);
       ['A', '?', 'E'].forEach((label, i) => {
@@ -636,7 +639,10 @@
   function drawBoss(b) {
     const glow = b.warn;
     const wobble = b.stun > 0 ? Math.sin(S.time * 30) * 3 : 0;
-    const x = b.x + wobble, y = b.y;
+    ctx.save();
+    ctx.translate(b.x + wobble, b.y);
+    ctx.scale(BOSS_SIZE, BOSS_SIZE);
+    const x = 0, y = 0;
     // Mic leaning into the speaker: the cause of the feedback
     ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(x + 96, y + 52); ctx.lineTo(x + 82, y + 2); ctx.stroke();
@@ -669,6 +675,7 @@
       ctx.fillStyle = '#E2D9FF'; ctx.font = '600 13px Oswald, sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('STUNNED', x, y - 46);
     }
+    ctx.restore();
   }
 
   function drawHeadphones(x, y, scale, color, defenders) {
