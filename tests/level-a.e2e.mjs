@@ -18,6 +18,12 @@ try {
   const S = (fn, arg) => frame.evaluate(fn, arg);
   const calm = () => S(() => { const s = window.__boss; s.notes = []; s.warnings = []; s.shots = []; s.attackIn = 99; s.holdIn = 99; s.pickupIn = 99; s.meter = 0; s.shotGap = 0; s.player.safe = 0; s.player.shield = 0; });
   const fired = () => S(() => window.__boss.shots.map((x) => x.kind));
+  // Phase changes pause for an upgrade; tests skip the wait.
+  const finishTransition = async () => {
+    await frame.waitForFunction(() => window.__boss.transition !== null, null, { timeout: 2000 });
+    await S(() => { window.__boss.transition.t = 0.01; });
+    await frame.waitForFunction(() => window.__boss.transition === null, null, { timeout: 2000 });
+  };
   const chord = async (...keys) => {
     for (const k of keys) await page.keyboard.down(k);
     for (const k of keys) await page.keyboard.up(k);
@@ -57,8 +63,18 @@ try {
 
   // Phase 2 at 75%: the fifth unlocks. E alone is a single; A + E is a power shot.
   await calm();
-  await S(() => { window.__boss.boss.hp = 76; damage(2); });
+  await S(() => { const s = window.__boss; s.boss.hp = 76; s.notes.push({ x: 300, y: 200, vx: 0, vy: 0, midi: 57, pc: 9, kind: 'note' }); damage(2); });
   assert.equal(await S(() => window.__boss.phase), 1);
+  // The transition: attacks stop, notes in flight are cleared, the boss can't be hurt.
+  assert.equal(await S(() => window.__boss.notes.length), 0, 'notes in flight cleared');
+  await page.waitForTimeout(1400);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-transition.png` });
+  const hpMid = await S(() => window.__boss.boss.hp);
+  await S(() => damage(5));
+  assert.equal(await S(() => window.__boss.boss.hp), hpMid, 'no damage while upgrading');
+  assert.equal(await S(() => window.__boss.warnings.length + window.__boss.notes.length), 0, 'no attacks while upgrading');
+  await finishTransition();
+  console.log('✓ phase transition: attacks stop, notes clear, boss upgrades, no damage');
   assert.equal(await game.locator('.piano-key.locked').count(), 5);
   await chord('g');
   assert.deepEqual(await fired(), ['single']);
@@ -76,6 +92,7 @@ try {
   await calm();
   await S(() => { window.__boss.boss.hp = 31; damage(2); });
   assert.equal(await S(() => window.__boss.phase), 2);
+  await finishTransition();
   assert.ok(await S(() => window.__boss.moment !== null), 'unlock moment started');
   assert.equal(await game.locator('.piano-key.locked').count(), 0, 'every key works while searching');
   await page.waitForTimeout(300);
