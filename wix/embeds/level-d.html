@@ -66,6 +66,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+#piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
 
@@ -641,6 +642,7 @@ const Level = (() => {
   let testMode = false;
   let extraHearts = 0;
   let onStart = () => {};
+  let usesPiano = true;
   let finishing = false;
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -691,7 +693,7 @@ const Level = (() => {
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-    piano.setEnabled(id === 'play');
+    piano.setEnabled(id === 'play' && usesPiano);
   }
 
   function button(text, onClick, primary) {
@@ -761,9 +763,12 @@ const Level = (() => {
     get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
-    setup({ description, start }) {
+    // piano: false hides the on-screen piano for levels that don't use it.
+    setup({ description, start, piano: showPiano = true }) {
       $('introText').textContent = description;
       onStart = start;
+      usesPiano = showPiano;
+      $('piano').hidden = !showPiano;
       Bridge.start();
     },
     // win({ heart: true }) also reports finding this level's hidden heart.
@@ -786,12 +791,6 @@ const Level = (() => {
     { key: 'D', sharps: ['F', 'C'] },
     { key: 'A', sharps: ['F', 'C', 'G'] },
   ];
-  // Piano note → which tumbler it sets, and to what.
-  const FROM_PIANO = {
-    0: ['C', false], 1: ['C', true], 2: ['D', false], 3: ['D', true], 4: ['E', false], 5: ['F', false],
-    6: ['F', true], 7: ['G', false], 8: ['G', true], 9: ['A', false], 10: ['A', true], 11: ['B', false],
-  };
-
   let round = 0;
   let sharp = {};
   let busy = false;
@@ -800,6 +799,7 @@ const Level = (() => {
 
   Level.setup({
     description: 'Set each tumbler to natural or sharp to match the key signature, and the lock opens.',
+    piano: false,
     start(stage) {
       stage.innerHTML = `
         <div class="round" id="round"></div>
@@ -824,12 +824,6 @@ const Level = (() => {
       ui.tryBtn.onclick = tryLock;
       startRound();
     },
-  });
-
-  Level.piano.onNoteOn((midi) => {
-    if (!ui.lock || busy) return;
-    const [letter, isSharp] = FROM_PIANO[midi % 12];
-    setTumbler(letter, isSharp, false);
   });
 
   function say(text, bad) {
@@ -859,7 +853,7 @@ const Level = (() => {
     LETTERS.forEach((l) => setTumbler(l, false, false));
     ui.tryBtn.disabled = false;
     say(round === 0
-      ? 'Click a tumbler to switch it between ♮ and ♯, or play the note on the piano. Then try the lock.'
+      ? 'Click a tumbler to switch it between ♮ and ♯. Then try the lock.'
       : `${r.key} major is one step clockwise from ${ROUNDS[round - 1].key}.`);
   }
 

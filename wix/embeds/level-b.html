@@ -66,6 +66,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+#piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
 
@@ -142,8 +143,13 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   .controls { display: flex; gap: 10px; align-items: center; }
   #feedback { min-height: 1.4em; color: var(--glow); margin: 0; }
   #feedback.bad { color: #e7a3b0; }
-  .piano { --white-w: 40px; }
-  .piano .piano-keys { height: 90px; }
+  .strip[hidden] { display: none; }
+  .reveal {
+    align-self: flex-start; padding: 0 5px; margin-left: -4px; font: 600 12px var(--heading);
+    background: none; border: 1px solid #2c2934; color: #4a4553; box-shadow: none;
+  }
+  .reveal:hover, .reveal:focus-visible { background: none; color: var(--quiet); border-color: var(--accent); box-shadow: none; }
+  .reveal[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -645,6 +651,7 @@ const Level = (() => {
   let testMode = false;
   let extraHearts = 0;
   let onStart = () => {};
+  let usesPiano = true;
   let finishing = false;
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -695,7 +702,7 @@ const Level = (() => {
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-    piano.setEnabled(id === 'play');
+    piano.setEnabled(id === 'play' && usesPiano);
   }
 
   function button(text, onClick, primary) {
@@ -765,9 +772,12 @@ const Level = (() => {
     get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
-    setup({ description, start }) {
+    // piano: false hides the on-screen piano for levels that don't use it.
+    setup({ description, start, piano: showPiano = true }) {
       $('introText').textContent = description;
       onStart = start;
+      usesPiano = showPiano;
+      $('piano').hidden = !showPiano;
       Bridge.start();
     },
     // win({ heart: true }) also reports finding this level's hidden heart.
@@ -783,10 +793,12 @@ const Level = (() => {
 <script>
   // Level 6, key of B: a 4-bar loop in B major with something wrong in the mix.
   // Three rounds, one problem each; fixes carry over between rounds.
-  // Hidden: a faint whine on the keys channel. Cut the keys' HIGH to find a heart.
-  const TRACKS = ['drums', 'bass', 'keys', 'lead'];
-  const LABELS = { drums: 'Drums', bass: 'Bass', keys: 'Keys', lead: 'Lead' };
-  const WHINE_CUT = -6;  // keys HIGH at or below this removes the whine
+  // Hidden: a fifth track, hidden and muted like a hidden track in a DAW. A
+  // small + at the end of the desk shows it; blending it in finds a heart.
+  const TRACKS = ['drums', 'bass', 'keys', 'lead'];   // the four the rounds are about
+  const ALL = [...TRACKS, 'arp'];
+  const LABELS = { drums: 'Drums', bass: 'Bass', keys: 'Keys', lead: 'Lead', arp: 'Arp' };
+  let arpShown = false;
 
   // Each round sets some controls wrong, describes the problem, and says when it's fixed.
   const ROUNDS = [
@@ -816,11 +828,12 @@ const Level = (() => {
 
   // The mix the player controls.
   const mix = {};
-  TRACKS.forEach((t) => { mix[t] = { fader: 0, low: 0, high: 0, pan: 0, mute: false, solo: false }; });
+  ALL.forEach((t) => { mix[t] = { fader: 0, low: 0, high: 0, pan: 0, mute: false, solo: false }; });
+  Object.assign(mix.arp, { mute: true, fader: -8, pan: 0.35 });
   let round = 0;
   let tries = 0;
   let ui = {};
-  window.__mix = { mix, get round() { return round; } };
+  window.__mix = { mix, get round() { return round; }, get arpShown() { return arpShown; } };
 
   // ---------- Audio: four channels into a master bus ----------
   let ctx = null, channels = {}, master, analyser, scheduler = null, step = 0, nextTime = 0;
@@ -833,7 +846,7 @@ const Level = (() => {
     analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
     master.connect(analyser).connect(ctx.destination);
-    TRACKS.forEach((t) => {
+    ALL.forEach((t) => {
       const input = ctx.createGain();
       const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 220;
       const high = ctx.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 3200;
@@ -842,13 +855,6 @@ const Level = (() => {
       input.connect(low).connect(high).connect(pan).connect(fader).connect(master);
       channels[t] = { input, low, high, pan, fader };
     });
-    // The hidden whine: quiet and high, on the keys channel before its EQ.
-    const whine = ctx.createOscillator();
-    const whineGain = ctx.createGain();
-    whine.frequency.value = 3951; // B7
-    whineGain.gain.value = 0.014;
-    whine.connect(whineGain).connect(channels.keys.input);
-    whine.start();
     applyMix();
   }
 
@@ -856,8 +862,8 @@ const Level = (() => {
 
   function applyMix() {
     if (!ctx) return;
-    const soloing = TRACKS.some((t) => mix[t].solo);
-    TRACKS.forEach((t) => {
+    const soloing = ALL.some((t) => mix[t].solo);
+    ALL.forEach((t) => {
       const c = channels[t], m = mix[t];
       const audible = !m.mute && (!soloing || m.solo);
       c.low.gain.setTargetAtTime(m.low, ctx.currentTime, 0.02);
@@ -917,6 +923,9 @@ const Level = (() => {
     if (inBar % 2 === 0) tone('bass', 'sawtooth', hz(BASS[bar] + (inBar % 8 === 6 ? 12 : 0)), t, 0.35, 0.005, STEP * 1.8, 700);
     if (inBar === 0 || inBar === 8) CHORDS[bar].forEach((m) => tone('keys', 'triangle', hz(m), t, 0.12, 0.03, STEP * 7, 2400));
     for (const [at, midi, len] of LEAD) if (at === s) tone('lead', 'square', hz(midi), t, 0.07, 0.01, STEP * len * 0.9, 3000);
+    // The hidden arp: the bar's chord, an octave up, rippling in 16ths.
+    const arp = [...CHORDS[bar], CHORDS[bar][0] + 12];
+    tone('arp', 'triangle', hz(arp[[0, 1, 2, 3, 2, 1][inBar % 6]] + 12), t, 0.08, 0.004, STEP * 0.9, 4200);
   }
 
   function startLoop() {
@@ -953,9 +962,10 @@ const Level = (() => {
   // ---------- The desk ----------
   function drawDesk() {
     ui.desk.innerHTML = '';
-    TRACKS.forEach((t) => {
+    ALL.forEach((t) => {
       const strip = document.createElement('div');
-      strip.className = 'strip';
+      strip.className = 'strip' + (t === 'arp' ? ' hidden-track' : '');
+      strip.hidden = t === 'arp' && !arpShown;
       strip.dataset.track = t;
       strip.innerHTML = `
         <h3>${LABELS[t].toUpperCase()}</h3>
@@ -973,6 +983,20 @@ const Level = (() => {
       });
       ui.desk.appendChild(strip);
     });
+    // The hidden track's button: small and easy to miss, like in a DAW.
+    const reveal = document.createElement('button');
+    reveal.className = 'reveal';
+    reveal.id = 'revealBtn';
+    reveal.title = 'Show hidden tracks';
+    reveal.setAttribute('aria-label', 'Show hidden tracks');
+    reveal.textContent = '+';
+    reveal.hidden = arpShown;
+    reveal.onclick = () => {
+      arpShown = true;
+      reveal.hidden = true;
+      ui.desk.querySelector('[data-track="arp"]').hidden = false;
+    };
+    ui.desk.appendChild(reveal);
     const m = document.createElement('div');
     m.className = 'master';
     m.innerHTML = '<div class="meter"><i></i></div><span>MASTER</span>';
@@ -983,8 +1007,8 @@ const Level = (() => {
 
   // Shows the mix's values on the desk.
   function refresh() {
-    const soloing = TRACKS.some((t) => mix[t].solo);
-    TRACKS.forEach((t) => {
+    const soloing = ALL.some((t) => mix[t].solo);
+    ALL.forEach((t) => {
       const strip = ui.desk.querySelector(`[data-track="${t}"]`);
       strip.querySelectorAll('input').forEach((input) => { input.value = mix[t][input.dataset.ctl]; });
       strip.querySelector('.db').textContent = mix[t].fader <= -30 ? '−∞' : `${mix[t].fader > 0 ? '+' : ''}${mix[t].fader} dB`;
@@ -1031,12 +1055,14 @@ const Level = (() => {
     if (round < ROUNDS.length) return setTimeout(startRound, 2600);
     setTimeout(() => {
       stopLoop();
-      Level.win({ heart: mix.keys.high <= WHINE_CUT });
+      // The hidden heart: the hidden track found, unmuted and blended in.
+      Level.win({ heart: arpShown && !mix.arp.mute && mix.arp.fader >= -15 });
     }, 2600);
   }
 
   Level.setup({
     description: 'A track in B major with a broken mix. Use the desk to make it sound right.',
+    piano: false,
     start(stage) {
       stage.innerHTML = `
         <div class="top"><span class="round" id="round"></span><span id="problem"></span></div>

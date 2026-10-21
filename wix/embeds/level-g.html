@@ -66,6 +66,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+#piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
 
@@ -631,6 +632,7 @@ const Level = (() => {
   let testMode = false;
   let extraHearts = 0;
   let onStart = () => {};
+  let usesPiano = true;
   let finishing = false;
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -681,7 +683,7 @@ const Level = (() => {
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-    piano.setEnabled(id === 'play');
+    piano.setEnabled(id === 'play' && usesPiano);
   }
 
   function button(text, onClick, primary) {
@@ -751,9 +753,12 @@ const Level = (() => {
     get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
-    setup({ description, start }) {
+    // piano: false hides the on-screen piano for levels that don't use it.
+    setup({ description, start, piano: showPiano = true }) {
       $('introText').textContent = description;
       onStart = start;
+      usesPiano = showPiano;
+      $('piano').hidden = !showPiano;
       Bridge.start();
     },
     // win({ heart: true }) also reports finding this level's hidden heart.
@@ -787,6 +792,7 @@ const Level = (() => {
 
   Level.setup({
     description: 'A melody in G major plays. One note doesn’t belong. Find it.',
+    piano: false,
     start(stage) {
       stage.innerHTML = `
         <div class="round" id="round"></div>
@@ -862,7 +868,7 @@ const Level = (() => {
       if (!heard) {
         heard = true;
         ui.roll.classList.remove('locked');
-        say('Click the note that doesn’t belong. You can play it again, or try notes on the piano.');
+        say('Click the note that doesn’t belong. You can play it again as often as you like.');
       }
     }, (total + 0.3) * 1000);
   }

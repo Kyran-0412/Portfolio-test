@@ -4,8 +4,9 @@ import { start } from './helpers/browser.mjs';
 
 const shots = process.env.SHOTS || '/tmp';
 const { base, page, errors, close } = await start();
-const KEYS = 'asdfghjk';
-const SCALE = [64, 66, 68, 69, 71, 73, 75, 76]; // E major on A–K
+// The full keyboard: A = C4, W = C♯4, S = D4 … so E4 is the D key.
+const CHROMATIC = ['a', 'w', 's', 'e', 'd', 'f', 't', 'g', 'y', 'h', 'u', 'j', 'k', 'o', 'l', 'p', ';', "'"];
+const keyFor = (midi) => CHROMATIC[midi - 60];
 const saved = async () => JSON.parse(await page.evaluate(() => localStorage.getItem('cof-progress')));
 
 async function playRun(game, frame, { mistakeInRound = null } = {}) {
@@ -16,14 +17,13 @@ async function playRun(game, frame, { mistakeInRound = null } = {}) {
     const { melody, length } = await frame.evaluate(() => ({ melody: window.__melody.melody, length: window.__melody.length }));
     assert.equal(length, round + 2, `round ${round} has ${round + 2} notes`);
     if (round === mistakeInRound) {
-      const wrong = SCALE.find((m) => m !== melody[0]);
-      await page.keyboard.press(KEYS[SCALE.indexOf(wrong)]);
+      await page.keyboard.press(keyFor(melody[0] === 65 ? 67 : 65)); // F or G: not in E major
       await game.locator('#feedback', { hasText: 'Not quite' }).waitFor();
       if (round === 2) await page.locator('#gameEmbed').screenshot({ path: `${shots}/le-miss.png` });
       await game.locator('#status', { hasText: 'Your turn' }).waitFor({ timeout: 8000 });
     }
     if (round === 3 && !mistakeInRound) await page.locator('#gameEmbed').screenshot({ path: `${shots}/le-turn.png` });
-    for (const midi of melody.slice(0, length)) await page.keyboard.press(KEYS[SCALE.indexOf(midi)]);
+    for (const midi of melody.slice(0, length)) await page.keyboard.press(keyFor(midi));
   }
   await game.locator('#found.show').waitFor({ timeout: 8000 });
 }
@@ -35,6 +35,7 @@ try {
   let game = page.frameLocator('#gameEmbed');
   await game.locator('#introTitle', { hasText: 'Melody Memory' }).waitFor();
   let frame = page.frames().find((f) => f.url().includes('level-e.html'));
+  assert.equal(await game.locator('.piano-key').count(), 18, 'the full keyboard');
 
   // A run with one mistake: the key, but no heart, and nothing said about hearts.
   await playRun(game, frame, { mistakeInRound: 2 });

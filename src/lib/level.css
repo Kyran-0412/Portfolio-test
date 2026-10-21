@@ -22,6 +22,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+#piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
 

@@ -66,6 +66,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   font-size: 13px; color: var(--glow); cursor: pointer; display: none;
 }
 .focus-banner.show { display: block; }
+#piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
 
@@ -121,10 +122,6 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   .bead.miss { background: #c46a7a; }
   #feedback { min-height: 1.6em; color: var(--glow); }
   #feedback.bad { color: #e7a3b0; }
-  .piano.scale-mode { --white-w: 58px; }
-  .piano.scale-mode .piano-keys { height: 112px; }
-  .piano.scale-mode .piano-name { font-size: 13px; color: #362d40; opacity: 1; }
-  .piano.scale-mode .piano-help { visibility: hidden; }
 </style>
 </head>
 <body>
@@ -626,6 +623,7 @@ const Level = (() => {
   let testMode = false;
   let extraHearts = 0;
   let onStart = () => {};
+  let usesPiano = true;
   let finishing = false;
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -676,7 +674,7 @@ const Level = (() => {
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-    piano.setEnabled(id === 'play');
+    piano.setEnabled(id === 'play' && usesPiano);
   }
 
   function button(text, onClick, primary) {
@@ -746,9 +744,12 @@ const Level = (() => {
     get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
-    setup({ description, start }) {
+    // piano: false hides the on-screen piano for levels that don't use it.
+    setup({ description, start, piano: showPiano = true }) {
       $('introText').textContent = description;
       onStart = start;
+      usesPiano = showPiano;
+      $('piano').hidden = !showPiano;
       Bridge.start();
     },
     // win({ heart: true }) also reports finding this level's hidden heart.
@@ -764,8 +765,8 @@ const Level = (() => {
 <script>
   // Level 5, key of E: Simon Says. A melody in E major plays; repeat it.
   // Each round adds one note. Hidden: a run with no mistakes finds a heart.
-  const ROOT = 64; // E4
-  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // keys A–K
+  const ROOT = 64; // E4 (the D key on the full keyboard)
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // E major, E4 to E5
   const FIRST = 3, LAST = 8; // melody length in the first and last round
   const ROUNDS = LAST - FIRST + 1;
 
@@ -779,7 +780,7 @@ const Level = (() => {
   window.__melody = { get melody() { return melody; }, get length() { return length; }, get mistakes() { return mistakes; } };
 
   Level.setup({
-    description: 'Listen to a melody in E major, then play it back. Each round it grows by one note.',
+    description: 'Listen to a melody in E major, then play it back on the keyboard. Each round it grows by one note.',
     start(stage) {
       stage.innerHTML = `
         <div class="round" id="round"></div>
@@ -794,7 +795,6 @@ const Level = (() => {
         again: stage.querySelector('#againBtn'),
       };
       ui.again.onclick = () => { ui.again.blur(); if (mode === 'input') play(); };
-      piano.useScale(ROOT);
       melody = growFrom([]);
       startRound();
     },

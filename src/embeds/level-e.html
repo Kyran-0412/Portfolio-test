@@ -24,10 +24,6 @@
   .bead.miss { background: #c46a7a; }
   #feedback { min-height: 1.6em; color: var(--glow); }
   #feedback.bad { color: #e7a3b0; }
-  .piano.scale-mode { --white-w: 58px; }
-  .piano.scale-mode .piano-keys { height: 112px; }
-  .piano.scale-mode .piano-name { font-size: 13px; color: #362d40; opacity: 1; }
-  .piano.scale-mode .piano-help { visibility: hidden; }
 </style>
 </head>
 <body>
@@ -39,8 +35,8 @@
 <script>
   // Level 5, key of E: Simon Says. A melody in E major plays; repeat it.
   // Each round adds one note. Hidden: a run with no mistakes finds a heart.
-  const ROOT = 64; // E4
-  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // keys A–K
+  const ROOT = 64; // E4 (the D key on the full keyboard)
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // E major, E4 to E5
   const FIRST = 3, LAST = 8; // melody length in the first and last round
   const ROUNDS = LAST - FIRST + 1;
 
@@ -54,7 +50,7 @@
   window.__melody = { get melody() { return melody; }, get length() { return length; }, get mistakes() { return mistakes; } };
 
   Level.setup({
-    description: 'Listen to a melody in E major, then play it back. Each round it grows by one note.',
+    description: 'Listen to a melody in E major, then play it back on the keyboard. Each round it grows by one note.',
     start(stage) {
       stage.innerHTML = `
         <div class="round" id="round"></div>
@@ -69,7 +65,6 @@
         again: stage.querySelector('#againBtn'),
       };
       ui.again.onclick = () => { ui.again.blur(); if (mode === 'input') play(); };
-      piano.useScale(ROOT);
       melody = growFrom([]);
       startRound();
     },

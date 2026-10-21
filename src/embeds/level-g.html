@@ -62,6 +62,7 @@
 
   Level.setup({
     description: 'A melody in G major plays. One note doesn’t belong. Find it.',
+    piano: false,
     start(stage) {
       stage.innerHTML = `
         <div class="round" id="round"></div>
@@ -137,7 +138,7 @@
       if (!heard) {
         heard = true;
         ui.roll.classList.remove('locked');
-        say('Click the note that doesn’t belong. You can play it again, or try notes on the piano.');
+        say('Click the note that doesn’t belong. You can play it again as often as you like.');
       }
     }, (total + 0.3) * 1000);
   }

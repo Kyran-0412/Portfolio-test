@@ -7,6 +7,7 @@ const Level = (() => {
   let testMode = false;
   let extraHearts = 0;
   let onStart = () => {};
+  let usesPiano = true;
   let finishing = false;
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -57,7 +58,7 @@ const Level = (() => {
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('show', s.id === id));
-    piano.setEnabled(id === 'play');
+    piano.setEnabled(id === 'play' && usesPiano);
   }
 
   function button(text, onClick, primary) {
@@ -127,9 +128,12 @@ const Level = (() => {
     get extraHearts() { return extraHearts; },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
-    setup({ description, start }) {
+    // piano: false hides the on-screen piano for levels that don't use it.
+    setup({ description, start, piano: showPiano = true }) {
       $('introText').textContent = description;
       onStart = start;
+      usesPiano = showPiano;
+      $('piano').hidden = !showPiano;
       Bridge.start();
     },
     // win({ heart: true }) also reports finding this level's hidden heart.

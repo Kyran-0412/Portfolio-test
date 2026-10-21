@@ -23,23 +23,23 @@ try {
   await game.locator('#tryBtn:not([disabled])').waitFor();
   await game.locator('#tryBtn').click();
   await game.locator('#feedback', { hasText: 'Hint: G major has 1 sharp' }).waitFor({ timeout: 5000 });
-  // Setting F♯ with the piano (T key), then F natural (F), then F♯ by clicking.
-  await page.keyboard.press('t');
+  // No piano on this level; tumblers toggle by clicking.
+  assert.equal(await game.locator('#piano').isVisible(), false, 'no piano');
+  await game.locator('.tumbler[data-letter="F"]').click();
   assert.deepEqual(await sharps(), ['F']);
-  await page.keyboard.press('f');
+  await game.locator('.tumbler[data-letter="F"]').click();
   assert.deepEqual(await sharps(), []);
   await game.locator('.tumbler[data-letter="F"]').click();
   assert.deepEqual(await sharps(), ['F']);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/ld-lock1.png` });
   await game.locator('#tryBtn').click();
   await game.locator('#feedback', { hasText: 'Unlocked. G major has 1 sharp: F♯.' }).waitFor({ timeout: 5000 });
-  console.log('✓ lock 1 (G): wrong tries counted, piano and clicks set tumblers, opens');
+  console.log('✓ lock 1 (G): wrong tries counted, clicks set tumblers, no piano, opens');
 
-  // Lock 2, D major: tumblers reset; add C♯ with the piano (W key).
+  // Lock 2, D major: tumblers reset.
   await game.locator('#title', { hasText: 'Set the lock to D major' }).waitFor({ timeout: 5000 });
   assert.deepEqual(await sharps(), []);
-  await page.keyboard.press('t');
-  await page.keyboard.press('w');
+  for (const l of ['F', 'C']) await game.locator(`.tumbler[data-letter="${l}"]`).click();
   await game.locator('#tryBtn').click();
   await game.locator('#feedback', { hasText: 'D major has 2 sharps: F♯, C♯.' }).waitFor({ timeout: 5000 });
   console.log('✓ lock 2 (D) opens');

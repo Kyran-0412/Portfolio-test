@@ -21,8 +21,12 @@ async function open() {
   return { game, frame, set };
 }
 
-async function fixAll(game, set, { cutWhine = false } = {}) {
-  if (cutWhine) await set('keys', 'high', -8);
+async function fixAll(game, set, { blendHidden = false } = {}) {
+  if (blendHidden) {
+    await game.locator('#revealBtn').click();
+    await game.locator('[data-track="arp"]').waitFor();
+    await game.locator('[data-track="arp"] .mute').click(); // unmute it
+  }
   await game.locator('#round', { hasText: 'Round 1 of 3' }).waitFor();
   await set('lead', 'fader', 0);
   await game.locator('#checkBtn').click();
@@ -42,6 +46,9 @@ try {
   await page.goto(`${base}/dev/sim.html?page=home`);
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E'] })));
   let { game, frame, set } = await open();
+
+  assert.equal(await game.locator('#piano').isVisible(), false, 'no piano');
+  assert.equal(await game.locator('[data-track="arp"]').isVisible(), false, 'the fifth track starts hidden');
 
   // The loop plays and the meter moves.
   await game.locator('#playBtn').click();
@@ -63,7 +70,7 @@ try {
   await game.locator('[data-track="lead"] .mute').click();
   // Solo dims the other strips.
   await game.locator('[data-track="keys"] .solo').click();
-  assert.equal(await game.locator('.strip.dim').count(), 3);
+  assert.equal(await game.locator('.strip.dim:not([hidden])').count(), 3);
   await game.locator('[data-track="keys"] .solo').click();
   console.log('✓ round 1: checks, hint, muting refused, solo works');
 
@@ -73,12 +80,13 @@ try {
   assert.deepEqual((await saved()).hearts, []);
   console.log('✓ three rounds fixed (lead level, muddy keys, panning); key found, no heart');
 
-  // Replaying with the whine cut finds the hidden heart.
+  // Replaying with the hidden track shown, unmuted and blended in finds the heart.
   ({ game, frame, set } = await open());
-  await fixAll(game, set, { cutWhine: true });
+  await game.locator('#playBtn').click();
+  await fixAll(game, set, { blendHidden: true });
   await game.locator('#heartFound').waitFor({ state: 'visible', timeout: 4000 });
   assert.deepEqual((await saved()).hearts, ['B']);
-  console.log('✓ cutting the keys’ HIGH removes the whine and finds the hidden heart');
+  console.log('✓ showing and blending in the hidden track finds the hidden heart');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Level 6 browser checks passed.');
