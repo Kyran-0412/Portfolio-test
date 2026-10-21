@@ -92,6 +92,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 .piano-key.black.mark-target { background: linear-gradient(#5e3e84, #362d40); }
 @keyframes target { 0%, 100% { box-shadow: 0 0 6px 1px rgba(154, 127, 224, 0.5); } 50% { box-shadow: 0 0 18px 5px rgba(200, 184, 255, 0.9); } }
 .piano-key.mark-good { box-shadow: 0 0 22px 6px rgba(200, 184, 255, 0.95); }
+.piano-key.locked { opacity: 0.28; filter: grayscale(1); cursor: not-allowed; }
 .piano-key.mark-bad { background: linear-gradient(#e7a3b0, #c46a7a) !important; }
 
 /* Key found */
@@ -437,6 +438,7 @@ const Piano = (() => {
     let shift = 0; // octaves up or down from the starting layout
     let layout = []; // [{ code, letter, midi, black, el }]
     let scaleMode = false;
+    let allowed = null; // null = every key works; otherwise a Set of note names (0–11)
     let chromaticBase = (startOctave + 1) * 12;
 
     container.classList.add('piano');
@@ -477,6 +479,7 @@ const Piano = (() => {
         const name = scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
         k.el.querySelector('.piano-name').textContent = name;
         k.el.classList.toggle('mark-target', targetPitches.has(midi % 12));
+        k.el.classList.toggle('locked', allowed !== null && !allowed.has(midi % 12));
         k.el.classList.remove('mark-good', 'mark-bad');
       });
     }
@@ -491,6 +494,7 @@ const Piano = (() => {
 
     function down(midi, source) {
       if (!enabled || held.has(midi)) return;
+      if (allowed !== null && !allowed.has(midi % 12)) return; // greyed out
       held.set(midi, Sound.hold(midi));
       const entry = entryFor(midi);
       if (entry) entry.el.classList.add('down');
@@ -598,6 +602,11 @@ const Piano = (() => {
       },
       useChromatic() { releaseAll(); shift = 0; chromatic(); },
       setEnabled(on) { enabled = on; if (!on) releaseAll(); },
+      // Greys out every key except these note names (0–11). null unlocks all.
+      setAllowed(pitchClasses) {
+        allowed = pitchClasses ? new Set(pitchClasses.map((pc) => ((pc % 12) + 12) % 12)) : null;
+        relabel();
+      },
       get octave() { return octaveOf(midiOf(layout[0])); },
       setOctave,
     };

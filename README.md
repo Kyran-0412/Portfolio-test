@@ -32,7 +32,9 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | --- | --- |
 | `wix/embeds/level-a.html` | Level A page's Embed HTML box (replaces the placeholder) |
 
-Controls: ← → move, Space dashes, A–K fire the notes of A major.
+Controls: ← → move, Space dashes. You build A major's triad over the fight:
+phase 1 only A fires; phase 2 unlocks E (A + E together is a power shot);
+phase 3 starts with finding the missing note C♯, then A + C♯ + E fires a triad.
 
 ## Level 3: Key Signature Lock
 

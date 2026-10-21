@@ -1,10 +1,11 @@
 // Browser test: Level 4, the Feedback boss fight (key of A).
+// You build A major's triad: root first, then the fifth, then the third.
 import assert from 'node:assert/strict';
 import { start } from './helpers/browser.mjs';
 
 const shots = process.env.SHOTS || '/tmp';
 const { base, page, errors, close } = await start();
-const SCALE_KEYS = 'asdfghjk'; // A B C♯ D E F♯ G♯ A
+// Scale-mode keys: a=A s=B d=C♯ f=D g=E h=F♯ j=G♯ k=A
 
 try {
   await page.goto(`${base}/dev/sim.html?page=home`);
@@ -14,116 +15,91 @@ try {
   await game.locator('#introTitle', { hasText: 'Feedback' }).waitFor();
   await game.locator('#startBtn').click();
   const frame = page.frames().find((f) => f.url().includes('level-a.html'));
-  const S = (fn) => frame.evaluate(fn);
+  const S = (fn, arg) => frame.evaluate(fn, arg);
+  const calm = () => S(() => { const s = window.__boss; s.notes = []; s.warnings = []; s.shots = []; s.attackIn = 99; s.holdIn = 99; s.pickupIn = 99; s.meter = 0; s.shotGap = 0; s.player.safe = 0; s.player.shield = 0; });
+  const fired = () => S(() => window.__boss.shots.map((x) => x.kind));
+  const chord = async (...keys) => {
+    for (const k of keys) await page.keyboard.down(k);
+    for (const k of keys) await page.keyboard.up(k);
+    await page.waitForTimeout(150);
+  };
 
-  // Scale mode: eight keys showing A major.
-  const names = await game.locator('.piano-key .piano-name').allTextContents();
-  assert.deepEqual(names, ['A', 'B', 'C♯', 'D', 'E', 'F♯', 'G♯', 'A']);
-  await game.locator('#howTo.show').waitFor();
-  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-howto.png` });
+  // Only the root is unlocked at the start.
+  assert.deepEqual(await game.locator('.piano-key .piano-name').allTextContents(), ['A', 'B', 'C♯', 'D', 'E', 'F♯', 'G♯', 'A']);
   await game.locator('#fightBtn').click();
-  console.log('✓ scale-mode piano, how-to card, fight starts');
-
-  // The boss warns, then fires.
-  await frame.waitForFunction(() => window.__boss.warnings.length > 0, null, { timeout: 4000 });
-  await frame.waitForFunction(() => window.__boss.notes.length > 0, null, { timeout: 4000 });
-  console.log('✓ boss warns before firing, then fires');
-
-  // Moving and dashing.
-  const x0 = await S(() => window.__boss.player.x);
-  await page.keyboard.down('ArrowRight'); await page.waitForTimeout(300); await page.keyboard.up('ArrowRight');
-  const x1 = await S(() => window.__boss.player.x);
-  assert.ok(x1 > x0 + 60, `moved right (${x0} → ${x1})`);
-  await page.keyboard.down('ArrowLeft'); await page.keyboard.press('Space'); await page.keyboard.up('ArrowLeft');
-  await page.waitForTimeout(250);
-  const x2 = await S(() => window.__boss.player.x);
-  assert.ok(x2 < x1, 'dash moved left');
-  assert.equal(await S(() => window.__boss.running), true, 'Space did not restart the fight');
-  console.log('✓ arrows move, Space dashes');
-
-  // Clear the field, then test each mechanic with notes placed by hand.
-  const calm = () => S(() => { const s = window.__boss; s.notes = []; s.warnings = []; s.attackIn = 99; s.holdIn = 99; s.pickupIn = 99; s.meter = 0; s.player.safe = 0; s.player.shield = 0; });
+  await frame.waitForFunction(() => window.__boss.running);
+  const locked = await game.locator('.piano-key.locked').count();
+  assert.equal(locked, 6, 'all but the two As are greyed out');
   await calm();
-  // An A coming at you is cancelled by firing A.
+  await chord('s');
+  assert.deepEqual(await fired(), [], 'a locked key fires nothing');
+  await chord('a');
+  assert.deepEqual(await fired(), ['single']);
+  console.log('✓ phase 1: only the root fires; other keys are greyed out');
+
+  // Cancelling an A with an A refunds it; the boss still has the whole scale.
+  await calm();
   await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 0, midi: 57, pc: 9, kind: 'note', label: true }); });
-  await page.keyboard.press('a');
-  const hpCancel = await S(() => window.__boss.boss.hp);
+  const hp0 = await S(() => window.__boss.boss.hp);
+  await chord('a');
   await frame.waitForFunction(() => window.__boss.notes.length === 0, null, { timeout: 2000 });
-  assert.ok(await S(() => window.__boss.meter < 1), 'cancelling refunds the note');
-  assert.equal(hpCancel - (await S(() => window.__boss.boss.hp)), 3, 'cancelling reflects damage');
-  console.log('✓ firing the same note cancels an incoming note, refunds it and reflects damage');
+  assert.ok(await S(() => window.__boss.meter < 1), 'refunded');
+  assert.equal(hp0 - (await S(() => window.__boss.boss.hp)), 3, 'cancel reflects damage');
+  console.log('✓ firing the same note cancels it, refunds it and reflects damage');
 
-  // Mashing: notes come no faster than the gap, and each adds to the meter.
-  await calm();
-  await S(() => { window.__boss.shots = []; });
-  for (let i = 0; i < 6; i++) await page.keyboard.press('asdfgh'[i]);
-  const fired = await S(() => window.__boss.shots.length);
-  assert.ok(fired < 6, `rapid presses are limited (${fired} of 6 fired)`);
-  assert.ok(await S(() => window.__boss.meter) > 0, 'firing fills your meter');
-  console.log(`✓ rapid presses limited (${fired} of 6 fired) and each note costs volume`);
-
-  // A different note passes through and hits you.
-  await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 160, midi: 64, pc: 4, kind: 'note', label: true }); });
-  await page.keyboard.press('a');
-  await frame.waitForFunction(() => window.__boss.meter > 15, null, { timeout: 3000 });
-  console.log('✓ a different note passes through and fills the volume meter');
-
-  // Ear defenders block a hit.
-  await calm();
-  await S(() => { const s = window.__boss; s.pickups.push({ x: s.player.x, y: s.player.y }); });
-  await frame.waitForFunction(() => window.__boss.player.shield > 0, null, { timeout: 2000 });
-  await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 6, vx: 0, vy: 0, midi: 64, pc: 4, kind: 'note', label: true }); });
-  await page.waitForTimeout(200);
-  assert.ok(await S(() => window.__boss.meter < 1), 'blocked by ear defenders');
-  console.log('✓ ear defenders block hits');
-
-  // Phase 2 at 60% health; then a held chord, cut with the missing note.
+  // Phase 2 at 60%: the fifth unlocks. E alone is a single; A + E is a power shot.
   await calm();
   await S(() => { window.__boss.boss.hp = 61; damage(2); });
   assert.equal(await S(() => window.__boss.phase), 1);
-  await S(() => hold());
-  await page.waitForTimeout(400);
-  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-held.png` });
-  const missingKey = await S(() => {
-    const scale = [57, 59, 61, 62, 64, 66, 68, 69];
-    return 'asdfghjk'[scale.findIndex((m) => m % 12 === window.__boss.held.missing % 12)];
-  });
-  const hpBefore = await S(() => window.__boss.boss.hp);
-  await page.keyboard.press(missingKey);
-  assert.equal(await S(() => window.__boss.held), null);
-  assert.ok(await S(() => window.__boss.boss.stun > 0), 'boss stunned');
-  assert.equal(Math.round(hpBefore - (await S(() => window.__boss.boss.hp))), 14);
-  console.log('✓ phase 2 at 60%; playing the missing note cuts the feedback');
+  assert.equal(await game.locator('.piano-key.locked').count(), 5);
+  await chord('g');
+  assert.deepEqual(await fired(), ['single']);
+  await calm();
+  await chord('a', 'g');
+  assert.deepEqual(await fired(), ['power']);
+  assert.ok(await S(() => window.__boss.meter > 14), 'power shot costs more volume (16 vs 7)');
+  const [speedSingle, speedPower] = await S(() => [560, Math.abs(window.__boss.shots[0].vy)]);
+  assert.ok(speedPower > speedSingle, 'power shot is faster');
+  await page.waitForTimeout(80);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-power.png` });
+  console.log('✓ phase 2: fifth unlocks; E alone is a single note, A + E a faster, louder power shot');
 
-  // Let it fight for a moment for a screenshot of phase 3.
-  await S(() => { const s = window.__boss; s.boss.hp = 26; damage(2); s.attackIn = 0.2; s.meter = 0; });
+  // Phase 3 at 30%: the boss holds A and E; find the missing note to unlock the third.
+  await calm();
+  await S(() => { window.__boss.boss.hp = 31; damage(2); });
   assert.equal(await S(() => window.__boss.phase), 2);
-  await page.keyboard.down('ArrowLeft'); await page.waitForTimeout(1500); await page.keyboard.up('ArrowLeft');
-  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-fight.png` });
-
-  // Losing: a full meter ends the phase; Retry restarts it.
+  assert.ok(await S(() => window.__boss.moment !== null), 'unlock moment started');
+  assert.equal(await game.locator('.piano-key.locked').count(), 0, 'every key works while searching');
+  await page.waitForTimeout(300);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-moment.png` });
+  for (const wrong of ['s', 'f', 'h']) await chord(wrong);
+  assert.ok(await S(() => window.__boss.texts.some((t) => /Hint: the third note/.test(t.text))), 'hint after three wrong tries');
+  assert.deepEqual(await fired(), [], 'guesses do not fire');
+  await chord('d');
+  assert.equal(await S(() => window.__boss.moment), null);
+  assert.equal(await game.locator('.piano-key.locked').count(), 4, 'A, C♯, E (and top A) unlocked');
   await calm();
-  await S(() => { const s = window.__boss; s.meter = 95; s.notes.push({ x: s.player.x, y: s.player.y - 6, vx: 0, vy: 0, midi: 64, pc: 4, kind: 'note', label: false }); });
-  await game.locator('#endCard.show', { hasText: 'Too loud!' }).waitFor({ timeout: 2000 });
-  await game.locator('#endButtons button', { hasText: 'Retry' }).click();
-  assert.equal(await S(() => window.__boss.running), true);
-  assert.equal(await S(() => window.__boss.boss.hp), 25, 'retry restarts phase 3');
-  console.log('✓ a full volume meter loses the phase; Retry restarts it');
+  await chord('a', 'd', 'g');
+  assert.deepEqual(await fired(), ['triad', 'triad', 'triad']);
+  const spread = await S(() => window.__boss.shots.map((x) => Math.sign(Math.round(x.vx))));
+  assert.deepEqual(spread, [-1, 0, 1], 'triad spreads wide');
+  await page.waitForTimeout(120);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-triad.png` });
+  console.log('✓ phase 3: finding C♯ unlocks the third; A + C♯ + E fires a wide triad');
 
-  // Mashing until you clip loses the phase.
+  // Mashing chords makes you clip.
   await calm();
-  for (let i = 0; i < 30; i++) { await page.keyboard.press('asdfghjk'[i % 8]); await page.waitForTimeout(230); if (await game.locator('#endCard.show').count()) break; }
+  for (let i = 0; i < 12; i++) { await chord('a', 'd', 'g'); await page.waitForTimeout(150); if (await game.locator('#endCard.show').count()) break; }
   await game.locator('#endCard.show', { hasText: 'Clipped!' }).waitFor({ timeout: 2000 });
   await game.locator('#endButtons button', { hasText: 'Retry' }).click();
-  console.log('✓ spamming notes makes you clip and lose the phase');
+  assert.equal(await S(() => window.__boss.boss.hp), 30, 'retry restarts phase 3');
+  assert.equal(await S(() => window.__boss.moment), null, 'the third stays unlocked on retry');
+  console.log('✓ spamming makes you clip; retry keeps the third unlocked');
 
   // Winning
   await calm();
-  await S(() => { window.__boss.boss.hp = 1; window.__boss.boss.stun = 5; }); // stunned bosses hold still
-  const bossX = await S(() => window.__boss.boss.x);
-  await S((x) => { window.__boss.player.x = x; }, bossX);
-  await frame.evaluate((x) => { window.__boss.player.x = x; }, bossX);
-  await page.keyboard.press('a');
+  await S(() => { const s = window.__boss; s.boss.hp = 1; s.boss.stun = 5; s.player.x = s.boss.x; });
+  await chord('a');
   await game.locator('#endCard.show', { hasText: 'Feedback cut' }).waitFor({ timeout: 3000 });
   await game.locator('#found.show').waitFor({ timeout: 5000 });
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of A.');

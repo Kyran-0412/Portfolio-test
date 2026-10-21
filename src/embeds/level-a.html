@@ -47,17 +47,27 @@
   ];
   // Phases start at these boss health levels; each is faster and harder.
   const PHASES = [
-    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 50, name: 'Phase 1' },
-    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 70, name: 'Phase 2: by ear' },
-    { from: 25, speed: 300, warn: 0.5, gap: 1.0, chords: 0.5, labels: false, lead: 0.55, drift: 95, name: 'Phase 3: full volume' },
+    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 50, name: 'Phase 1: root only' },
+    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 70, name: 'Fifth unlocked! Hold A + E for a power shot' },
+    { from: 30, speed: 290, warn: 0.55, gap: 1.05, chords: 0.5, labels: false, lead: 0.55, drift: 90, name: 'Phase 3: full volume' },
   ];
-  // Firing costs headroom: each note adds to your own volume meter, so
-  // mashing makes you clip. Cancelling a note refunds it.
-  const SHOT_COST = 7;
-  const SHOT_GAP = 0.22;      // seconds between notes
-  const HIT_DAMAGE = 1.5;     // a note landing on the boss
+
+  // You build A major's triad over the fight: root (A), then fifth (E), then
+  // third (C♯). The boss always has the whole scale.
+  const ROOT_PC = 9, THIRD_PC = 1, FIFTH_PC = 4;
+  const UNLOCKS = [[ROOT_PC], [ROOT_PC, FIFTH_PC], [ROOT_PC, FIFTH_PC, THIRD_PC]];
+  const CHORD_WINDOW = 0.09;  // keys pressed this close together count as one chord
+  const SHOT_GAP = 0.25;      // seconds between attacks
+  // Every attack adds to your own volume meter, so mashing makes you clip.
+  // Cancelling an incoming note with the same pitch refunds that note.
+  const ATTACKS = {
+    single: { cost: 7, damage: 1.5, speed: 560, refund: 7 },  // one note
+    power: { cost: 16, damage: 5, speed: 820, refund: 8 },    // root + fifth
+    triad: { cost: 24, damage: 3, speed: 600, refund: 8 },    // root + third + fifth: three notes, damage each
+  };
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
   const CUT_DAMAGE = 14;      // playing the held chord's missing note
+  let thirdFound = false;     // stays found if you retry phase 3
   const name = (midi) => Piano.noteName(midi);
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -78,10 +88,10 @@
             <div class="how">
               <span><kbd>←</kbd> <kbd>→</kbd></span><span>Move</span>
               <span><kbd>Space</kbd></span><span>Dash (briefly untouchable)</span>
-              <span><kbd>A</kbd> to <kbd>K</kbd></span><span>Fire the notes of A major. Each note adds to your volume, so don’t spam</span>
-              <span>Same note</span><span>Fire the note coming at you to cancel it</span>
+              <span><kbd>A</kbd></span><span>Fire the root, A. More notes unlock as the fight goes on</span>
+              <span>Your volume</span><span>Every attack adds to it. Spam and you clip</span>
+              <span>Same note</span><span>Fire the note coming at you to cancel it (only notes you have)</span>
               <span>Ear defenders</span><span>Catch them to block hits for a few seconds</span>
-              <span>Missing note</span><span>When it holds a chord, play the missing note</span>
             </div>
             <div class="buttons"><button class="primary" id="fightBtn">Fight</button></div>
           </div>
@@ -99,6 +109,7 @@
         endButtons: stage.querySelector('#endButtons'),
       };
       Level.piano.useScale(ROOT);
+      Level.piano.setAllowed(UNLOCKS[0]);
       stage.querySelector('#fightBtn').onclick = (e) => { e.currentTarget.blur(); ui.howTo.classList.remove('show'); begin(0); };
       newState(0);
       requestAnimationFrame(loop);
@@ -111,7 +122,8 @@
       phase, running: false, over: false, time: 0,
       boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
       player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0 },
-      meter: 0, shake: 0, shotGap: 0, warnedClip: false,
+      meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, moment: null,
+      unlocked: new Set(phase === 2 && !thirdFound ? UNLOCKS[1] : UNLOCKS[phase]),
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
       held: null, attackIn: 1.2, holdIn: 7, pickupIn: 9, banner: { text: PHASES[phase].name, t: 2 },
       firstHold: true,
@@ -124,6 +136,8 @@
     S.running = true;
     ui.end.classList.remove('show');
     Level.piano.setEnabled(true);
+    Level.piano.setAllowed([...S.unlocked]);
+    if (phase === 2 && !thirdFound) startMoment();
   }
 
   // ---------- Input ----------
@@ -152,21 +166,85 @@
     Sound.whoosh();
   }
 
+  // Keys pressed within CHORD_WINDOW of each other are gathered, then fired
+  // together as one attack.
   Level.piano.onNoteOn((midi) => {
     if (!S || !S.running) return;
+    const pc = midi % 12;
+    if (S.moment) return guessThird(pc);
     // Cutting the feedback: the held chord's missing note (free, no gap).
-    if (S.held && midi % 12 === S.held.missing % 12) return cutFeedback();
+    if (S.held && pc === S.held.missing % 12) return cutFeedback();
+    if (!S.unlocked.has(pc)) return;
+    if (!S.pending) S.pending = { notes: new Map(), t: CHORD_WINDOW };
+    S.pending.notes.set(pc, midi);
+  });
+
+  function release(notes) {
     if (S.shotGap > 0) return;
     const p = S.player;
+    const has = (pc) => notes.has(pc);
+    let kind = 'single';
+    if (S.unlocked.has(THIRD_PC) && has(ROOT_PC) && has(THIRD_PC) && has(FIFTH_PC)) kind = 'triad';
+    else if (has(ROOT_PC) && has(FIFTH_PC)) kind = 'power';
+    const a = ATTACKS[kind];
+    const shot = (midi, angle, extra = {}) => S.shots.push({
+      x: p.x, y: p.y - 22, vx: Math.sin(angle) * a.speed, vy: -Math.cos(angle) * a.speed,
+      midi, pcs: [midi % 12], kind, damage: a.damage, refund: a.refund, ...extra,
+    });
+    let cost = a.cost;
+    if (kind === 'power') {
+      shot(notes.get(ROOT_PC), 0, { pcs: [ROOT_PC, FIFTH_PC], label: 'A+E' });
+    } else if (kind === 'triad') {
+      [[ROOT_PC, -0.2], [THIRD_PC, 0], [FIFTH_PC, 0.2]].forEach(([pc, angle]) => shot(notes.get(pc), angle));
+    } else {
+      cost = a.cost * notes.size;
+      notes.forEach((midi) => shot(midi, 0));
+    }
     S.shotGap = SHOT_GAP;
-    S.shots.push({ x: p.x, y: p.y - 22, midi, pc: midi % 12 });
-    S.meter = Math.min(100, S.meter + SHOT_COST);
+    S.meter = Math.min(100, S.meter + cost);
     if (S.meter >= 60 && !S.warnedClip) {
       S.warnedClip = true;
-      S.texts.push({ x: p.x, y: p.y - 46, text: 'Too much noise! Slow down.', t: 1.6 });
+      playerText('Too much noise! Slow down.', 1.6);
     }
     if (S.meter >= 100) lose('clip');
-  });
+  }
+
+  // The third unlocks in a moment: the boss holds A and E, and you find the
+  // missing note. Every key works while you search.
+  function startMoment() {
+    S.moment = { tries: 0, sounds: [57, 64].map((m) => Sound.hold(m, 0.18)) };
+    S.banner = { text: 'It’s holding A and E. Find the missing note!', t: 3 };
+    Level.piano.setAllowed(null);
+  }
+
+  function endMoment() {
+    if (!S.moment) return;
+    S.moment.sounds.forEach((s) => s.stop());
+    S.moment = null;
+  }
+
+  function guessThird(pc) {
+    const p = S.player;
+    if (pc === THIRD_PC) {
+      endMoment();
+      S.texts = S.texts.filter((x) => !x.player); // clear any hint
+      thirdFound = true;
+      S.unlocked.add(THIRD_PC);
+      Level.piano.setAllowed([...S.unlocked]);
+      Sound.chord([57, 61, 64, 69], 0, 1.8, 0.55);
+      S.boss.stun = 1.4;
+      S.banner = { text: 'Third unlocked! Hold A + C♯ + E for a triad', t: 3.2 };
+      for (let i = 0; i < 24; i++) spark(S.boss.x, S.boss.y + 20, '#E2D9FF');
+      return;
+    }
+    if (pc === ROOT_PC || pc === FIFTH_PC) {
+      playerText('It already has that one.', 1.2);
+      return;
+    }
+    Sound.buzz();
+    S.moment.tries++;
+    playerText(S.moment.tries >= 3 ? 'Hint: the third note of the A major scale (the D key).' : 'Not that one.', 1.6);
+  }
 
   // ---------- Boss attacks ----------
   function aimX() {
@@ -207,7 +285,7 @@
 
   // The boss holds a chord with one note missing.
   function hold() {
-    const triad = pick(TRIADS);
+    const triad = TRIADS[0]; // A major: every note of it is yours by now
     const missing = Math.floor(Math.random() * 3);
     S.held = {
       triad, missing: triad.notes[missing], index: missing, t: 4.5,
@@ -258,8 +336,10 @@
     const next = PHASES.findIndex((ph, i) => i > S.phase && b.hp <= ph.from);
     if (next > S.phase) {
       S.phase = next;
-      S.banner = { text: PHASES[next].name, t: 2.2 };
+      S.banner = { text: PHASES[next].name, t: 2.6 };
       S.notes.forEach((n) => { n.label = PHASES[next].labels; });
+      if (next === 1) { S.unlocked.add(FIFTH_PC); Level.piano.setAllowed([...S.unlocked]); }
+      if (next === 2 && !thirdFound) startMoment();
     }
   }
 
@@ -274,6 +354,12 @@
     if (S.meter >= 100) lose();
   }
 
+  // A message above the player; a new one replaces the last.
+  function playerText(text, t = 1.4) {
+    S.texts = S.texts.filter((x) => !x.player);
+    S.texts.push({ x: S.player.x, y: S.player.y - 46, text, t, player: true });
+  }
+
   function spark(x, y, color) {
     const a = rand(0, Math.PI * 2), v = rand(60, 220);
     S.sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.3, 0.7), color });
@@ -283,6 +369,7 @@
   function finish(title, text, buttons) {
     S.running = false;
     endHold();
+    endMoment();
     Level.piano.setEnabled(false);
     ui.endTitle.textContent = title;
     ui.endText.textContent = text;
@@ -311,6 +398,7 @@
     S.over = true;
     S.running = false;
     endHold();
+    endMoment();
     S.notes = [];
     S.warnings = [];
     for (let i = 0; i < 40; i++) spark(S.boss.x, S.boss.y + 20, i % 2 ? '#C8B8FF' : '#9A7FE0');
@@ -353,9 +441,9 @@
 
     // Attacks, held chords and pickups
     if (b.stun <= 0) {
-      S.attackIn -= dt * (S.held ? 0.6 : 1);
+      S.attackIn -= dt * (S.held || S.moment ? 0.5 : 1);
       if (S.attackIn <= 0) { attack(); S.attackIn = ph.gap * rand(0.85, 1.15); }
-      if (S.phase >= 1 && !S.held) {
+      if (S.phase >= 2 && thirdFound && !S.held && !S.moment) {
         S.holdIn -= dt;
         if (S.holdIn <= 0) { hold(); S.holdIn = rand(8, 11); }
       }
@@ -375,30 +463,34 @@
 
     // Movement of everything else
     S.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
-    S.shots.forEach((s) => { s.y -= 560 * dt; });
+    S.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });
     S.pickups.forEach((k) => { k.y += 70 * dt; });
     S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
     S.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
     S.meter = Math.max(0, S.meter - 6 * dt);
     S.shotGap = Math.max(0, S.shotGap - dt);
+    if (S.pending) {
+      S.pending.t -= dt;
+      if (S.pending.t <= 0) { const notes = S.pending.notes; S.pending = null; release(notes); if (!S.running) return; }
+    }
     S.shake = Math.max(0, S.shake - dt);
     if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
 
     // Your note meets an incoming note of the same pitch: both cancel.
     for (const s of S.shots) {
       for (const n of S.notes) {
-        if (!n.gone && !s.gone && n.pc === s.pc && Math.hypot(n.x - s.x, n.y - s.y) < 26) {
+        if (!n.gone && !s.gone && s.pcs.includes(n.pc) && Math.hypot(n.x - s.x, n.y - s.y) < (s.kind === 'power' ? 34 : 26)) {
           n.gone = s.gone = true;
           for (let i = 0; i < 8; i++) spark(n.x, n.y, '#C8B8FF');
           Sound.note(n.midi + 12, 0, 0.25, 0.18);
-          S.meter = Math.max(0, S.meter - SHOT_COST); // refunded
+          S.meter = Math.max(0, S.meter - s.refund); // refunded
           damage(CANCEL_DAMAGE);
           if (!S.running) return;
         }
       }
       if (!s.gone && Math.abs(s.x - b.x) < 74 && s.y < b.y + 48 && s.y > b.y - 40) {
         s.gone = true;
-        damage(HIT_DAMAGE);
+        damage(s.damage);
         spark(s.x, b.y + 40, '#9A7FE0');
       }
     }
@@ -413,12 +505,12 @@
         k.gone = true;
         p.shield = 5;
         Sound.note(ROOT + 24, 0, 0.6, 0.25);
-        S.texts.push({ x: p.x, y: p.y - 40, text: 'Ear defenders!', t: 1.2 });
+        playerText('Ear defenders!', 1.2);
       }
     }
 
     S.notes = S.notes.filter((n) => !n.gone && n.y < H + 20 && n.x > -20 && n.x < W + 20);
-    S.shots = S.shots.filter((s) => !s.gone && s.y > -20);
+    S.shots = S.shots.filter((s) => !s.gone && s.y > -20 && s.x > -20 && s.x < W + 20);
     S.pickups = S.pickups.filter((k) => !k.gone && k.y < H + 20);
     S.sparks = S.sparks.filter((s) => s.t > 0);
     S.texts = S.texts.filter((t) => t.t > 0);
@@ -478,6 +570,22 @@
       ctx.fillRect(b.x - 60, y + 28, 120 * (h.t / 4.5), 3);
     }
 
+    // The third-unlock moment: A ? E
+    if (S.moment) {
+      const y = b.y + 92;
+      ctx.font = '600 12px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#9A93A3'; ctx.fillText('Find the missing note', b.x, y - 14);
+      ['A', '?', 'E'].forEach((label, i) => {
+        const x = b.x + (i - 1) * 40;
+        const missing = i === 1;
+        ctx.fillStyle = missing ? `rgba(226, 217, 255, ${0.4 + 0.35 * Math.sin(S.time * 8)})` : '#5E3E84';
+        roundRect(x - 16, y - 2, 32, 24, 6); ctx.fill();
+        ctx.fillStyle = missing ? '#181818' : '#E6E1EC';
+        ctx.font = '600 15px Oswald, sans-serif';
+        ctx.fillText(label, x, y + 15);
+      });
+    }
+
     // Incoming notes: blue for single notes, violet for chords
     for (const n of S.notes) {
       const color = n.kind === 'note' ? '#8fc4ff' : '#C8B8FF';
@@ -493,11 +601,14 @@
 
     // Your notes
     for (const s of S.shots) {
-      ctx.fillStyle = '#9A7FE0'; ctx.shadowColor = '#9A7FE0'; ctx.shadowBlur = 10;
-      roundRect(s.x - 12, s.y - 9, 24, 18, 6); ctx.fill();
+      const power = s.kind === 'power';
+      const color = power ? '#E2D9FF' : s.kind === 'triad' ? '#C8B8FF' : '#9A7FE0';
+      const w = power ? 44 : 24, h = power ? 24 : 18;
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = power ? 22 : 10;
+      roundRect(s.x - w / 2, s.y - h / 2, w, h, 6); ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#181818'; ctx.font = '600 11px Oswald, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(name(s.midi), s.x, s.y + 4);
+      ctx.fillStyle = '#181818'; ctx.font = `600 ${power ? 13 : 11}px Oswald, sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(s.label || name(s.midi), s.x, s.y + 4);
     }
 
     // Ear defenders pickups
@@ -595,15 +706,25 @@
       ctx.fillStyle = '#E2D9FF'; ctx.font = '500 12px Oswald, sans-serif';
       ctx.fillText(`EAR DEFENDERS ${Math.ceil(S.player.shield)}`, W - 16, 42);
     }
+    // Your moves, bottom left: locked ones are dim.
+    const moves = [['A', true], ['A+E', S.unlocked.has(FIFTH_PC)], ['A+C♯+E', S.unlocked.has(THIRD_PC)]];
+    ctx.textAlign = 'left'; ctx.font = '600 12px Oswald, sans-serif';
+    let mx = 16;
+    ctx.fillStyle = '#9A93A3'; ctx.fillText('MOVES', mx, H - 14); mx += 52;
+    for (const [label, on] of moves) {
+      ctx.fillStyle = on ? '#C8B8FF' : 'rgba(154, 147, 163, 0.35)';
+      ctx.fillText(on ? label : `${label} (locked)`, mx, H - 14);
+      mx += ctx.measureText(on ? label : `${label} (locked)`).width + 18;
+    }
     if (S.banner && S.running) {
       ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
       ctx.textAlign = 'center'; ctx.font = '600 26px Oswald, sans-serif'; ctx.fillStyle = '#C8B8FF';
-      ctx.fillText(S.banner.text, W / 2, H / 2 + 10);
+      ctx.fillText(S.banner.text, W / 2, H / 2 + 48);
       ctx.globalAlpha = 1;
     }
     if (paused && S.running) {
       ctx.textAlign = 'center'; ctx.font = '600 20px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
-      ctx.fillText('Paused: click the game to carry on', W / 2, H / 2 + 50);
+      ctx.fillText('Paused: click the game to carry on', W / 2, H / 2 + 90);
     }
   }
 

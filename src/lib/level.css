@@ -48,6 +48,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 .piano-key.black.mark-target { background: linear-gradient(#5e3e84, #362d40); }
 @keyframes target { 0%, 100% { box-shadow: 0 0 6px 1px rgba(154, 127, 224, 0.5); } 50% { box-shadow: 0 0 18px 5px rgba(200, 184, 255, 0.9); } }
 .piano-key.mark-good { box-shadow: 0 0 22px 6px rgba(200, 184, 255, 0.95); }
+.piano-key.locked { opacity: 0.28; filter: grayscale(1); cursor: not-allowed; }
 .piano-key.mark-bad { background: linear-gradient(#e7a3b0, #c46a7a) !important; }
 
 /* Key found */

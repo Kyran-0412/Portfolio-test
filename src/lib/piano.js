@@ -27,6 +27,7 @@ const Piano = (() => {
     let shift = 0; // octaves up or down from the starting layout
     let layout = []; // [{ code, letter, midi, black, el }]
     let scaleMode = false;
+    let allowed = null; // null = every key works; otherwise a Set of note names (0–11)
     let chromaticBase = (startOctave + 1) * 12;
 
     container.classList.add('piano');
@@ -67,6 +68,7 @@ const Piano = (() => {
         const name = scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
         k.el.querySelector('.piano-name').textContent = name;
         k.el.classList.toggle('mark-target', targetPitches.has(midi % 12));
+        k.el.classList.toggle('locked', allowed !== null && !allowed.has(midi % 12));
         k.el.classList.remove('mark-good', 'mark-bad');
       });
     }
@@ -81,6 +83,7 @@ const Piano = (() => {
 
     function down(midi, source) {
       if (!enabled || held.has(midi)) return;
+      if (allowed !== null && !allowed.has(midi % 12)) return; // greyed out
       held.set(midi, Sound.hold(midi));
       const entry = entryFor(midi);
       if (entry) entry.el.classList.add('down');
@@ -188,6 +191,11 @@ const Piano = (() => {
       },
       useChromatic() { releaseAll(); shift = 0; chromatic(); },
       setEnabled(on) { enabled = on; if (!on) releaseAll(); },
+      // Greys out every key except these note names (0–11). null unlocks all.
+      setAllowed(pitchClasses) {
+        allowed = pitchClasses ? new Set(pitchClasses.map((pc) => ((pc % 12) + 12) % 12)) : null;
+        relabel();
+      },
       get octave() { return octaveOf(midiOf(layout[0])); },
       setOctave,
     };
