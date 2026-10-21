@@ -95,6 +95,14 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-triad.png` });
   console.log('✓ phase 3: finding C♯ unlocks the third; A + C♯ + E fires a wide triad');
 
+  // A high meter distorts the edges (a screenshot to look at).
+  await calm();
+  for (const level of [65, 92]) {
+    await S((v) => { window.__boss.meter = v; window.__boss.banner = null; }, level);
+    await page.waitForTimeout(120);
+    await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-loud-${level}.png` });
+  }
+
   // Mashing chords makes you clip: stunned for a moment, no menu.
   await calm();
   for (let i = 0; i < 12; i++) { await chord('a', 'd', 'g'); await page.waitForTimeout(150); if (await S(() => window.__boss.player.stun > 0)) break; }
@@ -116,14 +124,24 @@ try {
   assert.deepEqual(await fired(), ['single'], 'can fire again after the stun');
   console.log('✓ spamming clips you: stunned for 2s with "You clipped!", then back in');
 
-  // Hits filling the meter still lose the phase; retry keeps the third.
+  // Hits take hearts (not volume); losing all three loses the phase.
   await calm();
-  await S(() => { const s = window.__boss; s.meter = 95; s.notes.push({ x: s.player.x, y: s.player.y - 6, vx: 0, vy: 0, midi: 64, pc: 4, kind: 'note', label: false }); });
-  await game.locator('#endCard.show', { hasText: 'Too loud!' }).waitFor({ timeout: 2000 });
+  const hitMe = () => S(() => { const s = window.__boss; s.player.safe = 0; s.notes.push({ x: s.player.x, y: s.player.y - 6, vx: 0, vy: 0, midi: 64, pc: 4, kind: 'note', label: false }); });
+  await hitMe();
+  await frame.waitForFunction(() => window.__boss.hearts === 2, null, { timeout: 2000 });
+  assert.ok(await S(() => window.__boss.meter < 1), 'a hit does not fill the volume meter');
+  assert.ok(await S(() => window.__boss.hurtFlash > 0), 'damage flash');
+  await page.waitForTimeout(60);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-hurt.png` });
+  await hitMe();
+  await frame.waitForFunction(() => window.__boss.hearts === 1, null, { timeout: 2000 });
+  await hitMe();
+  await game.locator('#endCard.show', { hasText: 'Out of hearts' }).waitFor({ timeout: 2000 });
   await game.locator('#endButtons button', { hasText: 'Retry' }).click();
   assert.equal(await S(() => window.__boss.boss.hp), 30, 'retry restarts phase 3');
   assert.equal(await S(() => window.__boss.moment), null, 'the third stays unlocked on retry');
-  console.log('✓ hits filling the meter lose the phase; retry keeps the third unlocked');
+  assert.equal(await S(() => window.__boss.hearts), 3, 'retry gives full hearts');
+  console.log('✓ each hit takes a heart; losing all three loses the phase; retry keeps the third');
 
   // Winning
   await calm();

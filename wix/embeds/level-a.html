@@ -776,6 +776,7 @@ const Level = (() => {
   const BOSS_SIZE = 0.72;     // drawing and hitbox scale
   const BOSS_HEALTH = 1.5;    // damage is divided by this: higher = tougher boss
   const MUZZLE = 44 * BOSS_SIZE; // where notes leave the speaker, below its centre
+  const HEARTS = 3;           // hits you can take before losing the phase
   const CLIP_STUN = 2;        // seconds you're stunned after clipping
   const CLIP_RESET = 70;      // your volume meter drops to this after clipping
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
@@ -803,7 +804,8 @@ const Level = (() => {
               <span><kbd>←</kbd> <kbd>→</kbd></span><span>Move</span>
               <span><kbd>Space</kbd></span><span>Dash (briefly untouchable)</span>
               <span><kbd>A</kbd></span><span>Fire the root, A. More notes unlock as the fight goes on</span>
-              <span>Your volume</span><span>Every attack adds to it. Spam and you clip</span>
+              <span>Hearts</span><span>Each hit takes one. Lose them all and you retry the phase</span>
+              <span>Your volume</span><span>Every attack adds to it. Spam and you clip (stunned for a moment)</span>
               <span>Same note</span><span>Fire the note coming at you to cancel it (only notes you have)</span>
               <span>Ear defenders</span><span>Catch them to block hits for a few seconds</span>
             </div>
@@ -837,6 +839,7 @@ const Level = (() => {
       boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
       player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
       meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, moment: null,
+      hearts: HEARTS, hurtFlash: 0, heartPop: 0,
       unlocked: new Set(phase === 2 && !thirdFound ? UNLOCKS[1] : UNLOCKS[phase]),
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
       held: null, attackIn: 1.2, holdIn: 7, pickupIn: 9, banner: { text: PHASES[phase].name, t: 2 },
@@ -1065,11 +1068,14 @@ const Level = (() => {
     const p = S.player;
     if (p.safe > 0) return;
     if (p.shield > 0) { Sound.block(); spark(p.x, p.y - 10, '#E2D9FF'); return; }
-    S.meter = Math.min(100, S.meter + 22);
-    p.safe = 0.9;
-    S.shake = 0.3;
+    S.hearts -= 1;
+    p.safe = 1.1;
+    S.shake = 0.4;
+    S.hurtFlash = 0.5;
+    S.heartPop = 0.6;
     Sound.squeal();
-    if (S.meter >= 100) lose();
+    for (let i = 0; i < 14; i++) spark(p.x, p.y - 8, '#ff5d7a');
+    if (S.hearts <= 0) lose();
   }
 
   // A message above the player; a new one replaces the last.
@@ -1118,7 +1124,7 @@ const Level = (() => {
 
   function lose() {
     const phase = S.phase;
-    finish('Too loud!', 'Your ears need a break. Try again from this phase.', [
+    finish('Out of hearts', 'Feedback got the better of you. Try again from this phase.', [
       ['Retry', () => begin(phase), true],
     ]);
   }
@@ -1204,6 +1210,8 @@ const Level = (() => {
       if (S.pending.t <= 0) { const notes = S.pending.notes; S.pending = null; release(notes); if (!S.running) return; }
     }
     S.shake = Math.max(0, S.shake - dt);
+    S.hurtFlash = Math.max(0, S.hurtFlash - dt);
+    S.heartPop = Math.max(0, S.heartPop - dt);
     if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
 
     // Your note meets an incoming note of the same pitch: both cancel.
@@ -1356,7 +1364,98 @@ const Level = (() => {
     ctx.globalAlpha = 1;
     ctx.restore();
 
+    drawDistortion();
+    drawHurt();
     drawHud();
+  }
+
+  // Loudness you can see: past 40% the edges glitch and glow, stronger as the
+  // meter rises; while clipped, the whole screen breaks up.
+  function drawDistortion() {
+    const clipped = S.player.stun > 0;
+    // Rises quickly at first so it's noticeable early: 65% already shows clearly.
+    const level = clipped ? 1 : Math.pow(Math.max(0, (S.meter - 40) / 60), 0.6);
+    if (level <= 0) return;
+    const pulse = S.meter > 85 || clipped ? 0.75 + 0.25 * Math.sin(S.time * 18) : 1;
+
+    // Torn strips: copy slices of the picture back slightly out of place.
+    const strips = clipped ? 14 : Math.round(2 + level * 6);
+    for (let i = 0; i < strips; i++) {
+      const h = rand(3, clipped ? 26 : 10);
+      const y = clipped ? rand(0, H - h) : (Math.random() < 0.5 ? rand(0, 60 * level) : rand(H - 60 * level, H - h));
+      const dx = rand(-1, 1) * (clipped ? 36 : 14 * level);
+      ctx.drawImage(canvas, 0, y, W, h, dx, y, W, h);
+    }
+    if (!clipped) {
+      for (let i = 0; i < strips; i++) {
+        const w = rand(3, 8 + 24 * level), y = rand(0, H);
+        const x = Math.random() < 0.5 ? rand(0, 50 * level) : rand(W - 50 * level, W - w);
+        ctx.drawImage(canvas, x, y, w, 40, x + rand(-6, 6) * level, y + rand(-8, 8) * level, w, 40);
+      }
+    }
+
+    // Glow creeping in from the edges: violet static, turning pink just
+    // before you clip (red is kept for getting hit).
+    const hot = clipped ? 1 : Math.max(0, (level - 0.7) / 0.3);
+    const [r, g, bl] = [200 + 55 * hot, 184 - 64 * hot, 255 - 95 * hot].map(Math.round);
+    const edge = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.62);
+    edge.addColorStop(0, `rgba(${r}, ${g}, ${bl}, 0)`);
+    edge.addColorStop(1, `rgba(${r}, ${g}, ${bl}, ${0.7 * level * pulse})`);
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, W, H);
+
+    // Static lines
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.06 + 0.12 * level})`;
+    for (let i = 0; i < (clipped ? 40 : 6 + 18 * level); i++) {
+      const y = rand(0, H);
+      const near = clipped ? 1 : 0.18;
+      const x = Math.random() < 0.5 ? rand(0, W * near) : rand(W * (1 - near), W);
+      ctx.fillRect(x, y, rand(10, clipped ? 160 : 50), 1);
+    }
+    if (clipped) {
+      // Colour split across the whole screen
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.18;
+      ctx.drawImage(canvas, 6, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(255, 120, 160, ${0.1 * pulse})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // Getting hit: a red flash and a red rim.
+  function drawHurt() {
+    if (S.hurtFlash <= 0) return;
+    const k = S.hurtFlash / 0.5;
+    ctx.fillStyle = `rgba(255, 40, 70, ${0.28 * k})`;
+    ctx.fillRect(0, 0, W, H);
+    const rim = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.6);
+    rim.addColorStop(0, 'rgba(255, 40, 70, 0)');
+    rim.addColorStop(1, `rgba(255, 40, 70, ${0.7 * k})`);
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawHeart(x, y, size, full) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size / 20, size / 20);
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    ctx.bezierCurveTo(-10, -2, -10, -10, -5, -10);
+    ctx.bezierCurveTo(-2, -10, 0, -8, 0, -6);
+    ctx.bezierCurveTo(0, -8, 2, -10, 5, -10);
+    ctx.bezierCurveTo(10, -10, 10, -2, 0, 6);
+    ctx.closePath();
+    if (full) {
+      ctx.fillStyle = '#ff5d7a'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 8;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = 'rgba(255, 93, 122, 0.45)'; ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawBoss(b) {
@@ -1451,16 +1550,23 @@ const Level = (() => {
       ctx.fillStyle = '#E2D9FF'; ctx.font = '500 12px Oswald, sans-serif';
       ctx.fillText(`EAR DEFENDERS ${Math.ceil(S.player.shield)}`, W - 16, 42);
     }
-    // Your moves, bottom left: locked ones are dim.
-    const moves = [['A', true], ['A+E', S.unlocked.has(FIFTH_PC)], ['A+C♯+E', S.unlocked.has(THIRD_PC)]];
-    ctx.textAlign = 'left'; ctx.font = '600 12px Oswald, sans-serif';
-    let mx = 16;
-    ctx.fillStyle = '#9A93A3'; ctx.fillText('MOVES', mx, H - 14); mx += 52;
-    for (const [label, on] of moves) {
-      ctx.fillStyle = on ? '#C8B8FF' : 'rgba(154, 147, 163, 0.35)';
-      ctx.fillText(on ? label : `${label} (locked)`, mx, H - 14);
-      mx += ctx.measureText(on ? label : `${label} (locked)`).width + 18;
+    // Hearts, bottom left. The one just lost pops.
+    for (let i = 0; i < HEARTS; i++) {
+      const lost = i === S.hearts && S.heartPop > 0;
+      const size = lost ? 22 + 14 * (S.heartPop / 0.6) : 22;
+      drawHeart(28 + i * 30, H - 22, size, i < S.hearts || lost && Math.floor(S.time * 16) % 2 === 0);
     }
+    // Your moves, bottom right: locked ones are dim.
+    const moves = [['A', true], ['A+E', S.unlocked.has(FIFTH_PC)], ['A+C♯+E', S.unlocked.has(THIRD_PC)]];
+    ctx.textAlign = 'right'; ctx.font = '600 12px Oswald, sans-serif';
+    let mx = W - 16;
+    for (const [label, on] of moves.reverse()) {
+      const text = on ? label : `${label} (locked)`;
+      ctx.fillStyle = on ? '#C8B8FF' : 'rgba(154, 147, 163, 0.35)';
+      ctx.fillText(text, mx, H - 14);
+      mx -= ctx.measureText(text).width + 18;
+    }
+    ctx.fillStyle = '#9A93A3'; ctx.fillText('MOVES', mx, H - 14);
     if (S.banner && S.running) {
       ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
       ctx.textAlign = 'center';

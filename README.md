@@ -35,6 +35,8 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 Controls: ← → move, Space dashes. You build A major's triad over the fight:
 phase 1 only A fires; phase 2 unlocks E (A + E together is a power shot);
 phase 3 starts with finding the missing note C♯, then A + C♯ + E fires a triad.
+You have 3 hearts (HEARTS in the file); each hit takes one. Firing fills your
+volume meter; clipping it stuns you for 2 seconds.
 
 ## Level 3: Key Signature Lock
 
