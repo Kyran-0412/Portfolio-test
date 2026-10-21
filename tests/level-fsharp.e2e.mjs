@@ -39,6 +39,20 @@ try {
   assert.equal(await game.locator('.piano-key.locked').count(), 4, 'F♯, A♯, C♯ (and top F♯) to start');
   console.log('✓ F♯ major in scale mode (E♯ spelled right), triad notes unlocked');
 
+  // The boss fires single notes and perfect fifths, never triads.
+  await calm();
+  const kinds = await S(() => { const s = window.__boss; for (let i = 0; i < 60; i++) attack(); const k = [...new Set(s.warnings.map((w) => w.kind))].sort(); s.warnings = []; return k; });
+  assert.deepEqual(kinds, ['fifth', 'note']);
+  await S(() => { const s = window.__boss; fire({ kind: 'note', midi: 54, tx: s.player.x }); fire({ kind: 'fifth', notes: [54, 61], tx: s.player.x }); });
+  const speeds = await S(() => window.__boss.notes.map((n) => [n.kind, Math.hypot(n.vx, n.vy)]));
+  assert.ok(speeds[1][0] === 'fifth' && speeds[1][1] > speeds[0][1], 'fifths fly faster than single notes');
+  // Firing either note of a fifth cancels it.
+  await calm();
+  await S(() => { const s = window.__boss; s.notes.push({ x: s.player.x, y: s.player.y - 170, vx: 0, vy: 0, midi: 54, pcs: [6, 1], notes: [54, 61], kind: 'fifth', label: true }); });
+  await chord('g'); // C♯
+  await frame.waitForFunction(() => window.__boss.notes.length === 0, null, { timeout: 2000 });
+  console.log('✓ the boss fires notes and faster perfect fifths (no triads); either note cancels a fifth');
+
   // A violet laser: warning line, then a sweep; A + D resolves it.
   await calm();
   await S(() => startLasers());
