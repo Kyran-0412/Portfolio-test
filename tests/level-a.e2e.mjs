@@ -55,9 +55,9 @@ try {
   assert.equal(hp0 - (await S(() => window.__boss.boss.hp)), 2, 'cancel reflects damage (3 ÷ 1.5 health)');
   console.log('✓ firing the same note cancels it, refunds it and reflects damage');
 
-  // Phase 2 at 60%: the fifth unlocks. E alone is a single; A + E is a power shot.
+  // Phase 2 at 75%: the fifth unlocks. E alone is a single; A + E is a power shot.
   await calm();
-  await S(() => { window.__boss.boss.hp = 61; damage(2); });
+  await S(() => { window.__boss.boss.hp = 76; damage(2); });
   assert.equal(await S(() => window.__boss.phase), 1);
   assert.equal(await game.locator('.piano-key.locked').count(), 5);
   await chord('g');
