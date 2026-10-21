@@ -755,9 +755,9 @@ const Level = (() => {
   ];
   // Phases start at these boss health levels; each is faster and harder.
   const PHASES = [
-    { from: 100, speed: 200, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 85, name: 'Phase 1: root only' },
-    { from: 60, speed: 250, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 115, name: 'Fifth unlocked! Hold A + E for a power shot' },
-    { from: 30, speed: 290, warn: 0.55, gap: 1.05, chords: 0.5, labels: false, lead: 0.55, drift: 145, name: 'Phase 3: full volume' },
+    { from: 100, speed: 260, warn: 0.75, gap: 1.6, chords: 0, labels: true, lead: 0, drift: 85, name: 'Phase 1: root only' },
+    { from: 60, speed: 320, warn: 0.65, gap: 1.3, chords: 0.45, labels: false, lead: 0, drift: 115, name: 'Fifth unlocked! Hold A + E for a power shot' },
+    { from: 30, speed: 375, warn: 0.55, gap: 1.05, chords: 0.5, labels: false, lead: 0.55, drift: 145, name: 'Phase 3: full volume' },
   ];
 
   // You build A major's triad over the fight: root (A), then fifth (E), then
@@ -776,6 +776,8 @@ const Level = (() => {
   const BOSS_SIZE = 0.72;     // drawing and hitbox scale
   const BOSS_HEALTH = 1.5;    // damage is divided by this: higher = tougher boss
   const MUZZLE = 44 * BOSS_SIZE; // where notes leave the speaker, below its centre
+  const CLIP_STUN = 2;        // seconds you're stunned after clipping
+  const CLIP_RESET = 70;      // your volume meter drops to this after clipping
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
   const CUT_DAMAGE = 14;      // playing the held chord's missing note
@@ -833,7 +835,7 @@ const Level = (() => {
     S = {
       phase, running: false, over: false, time: 0,
       boss: { x: W / 2, y: 82, hp: PHASES[phase].from, target: W / 2, stun: 0, flash: 0, warn: 0 },
-      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0 },
+      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
       meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, moment: null,
       unlocked: new Set(phase === 2 && !thirdFound ? UNLOCKS[1] : UNLOCKS[phase]),
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [],
@@ -869,7 +871,7 @@ const Level = (() => {
 
   function dash() {
     const p = S && S.player;
-    if (!p || !S.running || p.dashCool > 0) return;
+    if (!p || !S.running || p.dashCool > 0 || p.stun > 0) return;
     p.dash = 0.18;
     p.dashCool = 0.9;
     p.safe = Math.max(p.safe, 0.3);
@@ -885,6 +887,7 @@ const Level = (() => {
     const pc = midi % 12;
     if (S.moment) return guessThird(pc);
     // Cutting the feedback: the held chord's missing note (free, no gap).
+    if (S.player.stun > 0) return; // clipped: can't play
     if (S.held && pc === S.held.missing % 12) return cutFeedback();
     if (!S.unlocked.has(pc)) return;
     if (!S.pending) S.pending = { notes: new Map(), t: CHORD_WINDOW };
@@ -918,7 +921,7 @@ const Level = (() => {
       S.warnedClip = true;
       playerText('Too much noise! Slow down.', 1.6);
     }
-    if (S.meter >= 100) lose('clip');
+    if (S.meter >= 100) clip();
   }
 
   // The third unlocks in a moment: the boss holds A and E, and you find the
@@ -1099,12 +1102,23 @@ const Level = (() => {
     ui.end.classList.add('show');
   }
 
-  function lose(reason) {
+  // Firing too much: you're stunned for a moment instead of losing.
+  function clip() {
+    const p = S.player;
+    p.stun = CLIP_STUN;
+    p.dash = 0;
+    S.meter = CLIP_RESET;
+    S.pending = null;
+    S.shake = 0.35;
+    S.banner = { text: 'You clipped!', t: 1.8, big: true };
+    Sound.squeal();
+    Level.piano.setEnabled(false);
+    setTimeout(() => { if (S && S.running && S.player === p) Level.piano.setEnabled(true); }, CLIP_STUN * 1000);
+  }
+
+  function lose() {
     const phase = S.phase;
-    const text = reason === 'clip'
-      ? 'You clipped: too many notes at once. Pick your shots. Try again from this phase.'
-      : 'Your ears need a break. Try again from this phase.';
-    finish(reason === 'clip' ? 'Clipped!' : 'Too loud!', text, [
+    finish('Too loud!', 'Your ears need a break. Try again from this phase.', [
       ['Retry', () => begin(phase), true],
     ]);
   }
@@ -1138,7 +1152,8 @@ const Level = (() => {
     S.time += dt;
 
     // Player movement
-    p.dir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
+    p.stun = Math.max(0, p.stun - dt);
+    p.dir = p.stun > 0 ? 0 : (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
     const speed = p.dash > 0 ? 1300 : 380;
     const dir = p.dash > 0 ? p.dashDir : p.dir;
     p.x = Math.min(W - 24, Math.max(24, p.x + dir * speed * dt));
@@ -1405,7 +1420,18 @@ const Level = (() => {
       ctx.strokeStyle = `rgba(226, 217, 255, ${0.4 + 0.3 * Math.sin(S.time * 10)})`; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y - 6, 30, 0, Math.PI * 2); ctx.stroke();
     }
-    drawHeadphones(p.x, p.y - 4, 1, p.shield > 0 ? '#E2D9FF' : '#9A7FE0', p.shield > 0);
+    drawHeadphones(p.x, p.y - 4, 1, p.stun > 0 ? '#5d5866' : p.shield > 0 ? '#E2D9FF' : '#9A7FE0', p.shield > 0);
+    if (p.stun > 0) {
+      // Static crackling round the stunned headphones
+      ctx.strokeStyle = 'rgba(255, 93, 122, 0.8)'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) {
+        const a = S.time * 9 + i * 2.1;
+        ctx.beginPath();
+        ctx.moveTo(p.x + Math.cos(a) * 26, p.y - 6 + Math.sin(a) * 18);
+        ctx.lineTo(p.x + Math.cos(a + 0.3) * 34, p.y - 6 + Math.sin(a + 0.3) * 24);
+        ctx.stroke();
+      }
+    }
   }
 
   function drawHud() {
@@ -1437,7 +1463,9 @@ const Level = (() => {
     }
     if (S.banner && S.running) {
       ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
-      ctx.textAlign = 'center'; ctx.font = '600 26px Oswald, sans-serif'; ctx.fillStyle = '#C8B8FF';
+      ctx.textAlign = 'center';
+      ctx.font = S.banner.big ? '600 44px Oswald, sans-serif' : '600 26px Oswald, sans-serif';
+      ctx.fillStyle = S.banner.big ? '#ff5d7a' : '#C8B8FF';
       ctx.fillText(S.banner.text, W / 2, H / 2 + 48);
       ctx.globalAlpha = 1;
     }

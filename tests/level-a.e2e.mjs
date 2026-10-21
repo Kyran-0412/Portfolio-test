@@ -41,8 +41,8 @@ try {
   await calm();
   await S(() => { const s = window.__boss; fire({ kind: 'note', midi: 57, tx: s.player.x }); fire({ kind: 'chord', triad: { notes: [57, 61, 64], major: true }, tx: s.player.x }); });
   const speeds = await S(() => window.__boss.notes.map((n) => [n.kind, Math.round(Math.hypot(n.vx, n.vy))]));
-  assert.equal(speeds[0][1], 250, 'single note: 200 × 1.25');
-  assert.ok(speeds.slice(1).every(([kind, v]) => kind === 'chord' && v === 200), 'chords unchanged');
+  assert.equal(speeds[0][1], 325, 'single note: 260 × 1.25');
+  assert.ok(speeds.slice(1).every(([kind, v]) => kind === 'chord' && v === 260), 'chords at the phase speed');
   console.log('✓ boss single notes fly 25% faster than its chords');
 
   // Cancelling an A with an A refunds it; the boss still has the whole scale.
@@ -95,14 +95,35 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-triad.png` });
   console.log('✓ phase 3: finding C♯ unlocks the third; A + C♯ + E fires a wide triad');
 
-  // Mashing chords makes you clip.
+  // Mashing chords makes you clip: stunned for a moment, no menu.
   await calm();
-  for (let i = 0; i < 12; i++) { await chord('a', 'd', 'g'); await page.waitForTimeout(150); if (await game.locator('#endCard.show').count()) break; }
-  await game.locator('#endCard.show', { hasText: 'Clipped!' }).waitFor({ timeout: 2000 });
+  for (let i = 0; i < 12; i++) { await chord('a', 'd', 'g'); await page.waitForTimeout(150); if (await S(() => window.__boss.player.stun > 0)) break; }
+  assert.ok(await S(() => window.__boss.player.stun > 0), 'clipping stuns you');
+  assert.equal(await S(() => window.__boss.banner.text), 'You clipped!');
+  assert.equal(await game.locator('#endCard.show').count(), 0, 'no menu');
+  assert.ok(await S(() => window.__boss.meter <= 70), 'meter drops back');
+  await page.waitForTimeout(250);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/la-clipped.png` });
+  const xStun = await S(() => window.__boss.player.x);
+  await S(() => { window.__boss.shots = []; });
+  await page.keyboard.down('ArrowRight'); await page.waitForTimeout(300); await page.keyboard.up('ArrowRight');
+  await chord('a');
+  assert.equal(await S(() => window.__boss.player.x), xStun, 'cannot move while stunned');
+  assert.deepEqual(await fired(), [], 'cannot fire while stunned');
+  await frame.waitForFunction(() => window.__boss.player.stun === 0, null, { timeout: 3000 });
+  await page.waitForTimeout(100);
+  await chord('a');
+  assert.deepEqual(await fired(), ['single'], 'can fire again after the stun');
+  console.log('✓ spamming clips you: stunned for 2s with "You clipped!", then back in');
+
+  // Hits filling the meter still lose the phase; retry keeps the third.
+  await calm();
+  await S(() => { const s = window.__boss; s.meter = 95; s.notes.push({ x: s.player.x, y: s.player.y - 6, vx: 0, vy: 0, midi: 64, pc: 4, kind: 'note', label: false }); });
+  await game.locator('#endCard.show', { hasText: 'Too loud!' }).waitFor({ timeout: 2000 });
   await game.locator('#endButtons button', { hasText: 'Retry' }).click();
   assert.equal(await S(() => window.__boss.boss.hp), 30, 'retry restarts phase 3');
   assert.equal(await S(() => window.__boss.moment), null, 'the third stays unlocked on retry');
-  console.log('✓ spamming makes you clip; retry keeps the third unlocked');
+  console.log('✓ hits filling the meter lose the phase; retry keeps the third unlocked');
 
   // Winning
   await calm();
