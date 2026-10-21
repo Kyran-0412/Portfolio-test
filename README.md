@@ -21,10 +21,24 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-a.html` | Level 4, Feedback (boss fight) | Level A page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-e.html` | Level 5, Melody Memory | Level E page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-b.html` | Level 6, Fix the Mix | Level B page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-fsharp.html` | Level 7, The Tritone (boss fight) | Level F♯ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 7: The Tritone (second boss), and phase transitions
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-fsharp.html` | Level F♯ page's Embed HTML box (replaces the placeholder) |
+| `wix/embeds/level-a.html` | Level A page's box (Feedback now has phase transitions too) |
+
+Controls in scale mode (F♯ major): A + G power shot, A + D + G triad, A + D resolves a violet laser,
+A + F + G sus4 shockwave (from phase 2). Dash through lasers. At phase 2 it flips to G♭; phase 3's
+red double lasers can't be resolved.
 
 ## Level 6: Fix the Mix (and the piano only where it's needed)
 

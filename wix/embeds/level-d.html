@@ -455,6 +455,7 @@ const Piano = (() => {
     let layout = []; // [{ code, letter, midi, black, el }]
     let scaleMode = false;
     let allowed = null; // null = every key works; otherwise a Set of note names (0–11)
+    let names = null;   // optional names to show on the keys, e.g. spelled with flats
     let chromaticBase = (startOctave + 1) * 12;
 
     container.classList.add('piano');
@@ -489,10 +490,10 @@ const Piano = (() => {
 
     function relabel() {
       octaveEl.textContent = octaveOf(midiOf(layout[0]));
-      layout.forEach((k) => {
+      layout.forEach((k, i) => {
         const midi = midiOf(k);
         k.el.dataset.midi = midi;
-        const name = scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
+        const name = names ? names[i] : scaleMode ? noteName(midi) : (midi % 12 === 0 ? `C${octaveOf(midi)}` : '');
         k.el.querySelector('.piano-name').textContent = name;
         k.el.classList.toggle('mark-target', targetPitches.has(midi % 12));
         k.el.classList.toggle('locked', allowed !== null && !allowed.has(midi % 12));
@@ -616,7 +617,9 @@ const Piano = (() => {
         layout = steps.map((step, i) => ({ code: SCALE_CODES[i], letter: SCALE_LETTERS[i], midi: root + step, black: false }));
         render();
       },
-      useChromatic() { releaseAll(); shift = 0; chromatic(); },
+      useChromatic() { releaseAll(); shift = 0; names = null; chromatic(); },
+      // Shows these names on the keys instead (scale mode), e.g. E♯ or G♭.
+      setNames(list) { names = list; relabel(); },
       setEnabled(on) { enabled = on; if (!on) releaseAll(); },
       // Greys out every key except these note names (0–11). null unlocks all.
       setAllowed(pitchClasses) {
