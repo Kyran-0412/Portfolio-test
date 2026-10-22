@@ -1048,7 +1048,7 @@ const Level = (() => {
   const W = 900, H = 400;
   const ROOT = 57; // A3
   // The boss's own synth (your attacks stay on the piano). Long, washy release.
-  const BOSS = Sound.instrument('feedback', { release: 0.7 });
+  const BOSS = Sound.instrument('feedback', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
   const TRIADS = [ // diatonic chords of A major, as MIDI notes
     { name: 'A', notes: [57, 61, 64], major: true }, { name: 'D', notes: [62, 66, 69], major: true },
