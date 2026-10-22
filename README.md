@@ -40,9 +40,11 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | --- | --- |
 | `wix/embeds/level-f.html` | Level F page's Embed HTML box (replaces the placeholder) |
 
-The Circle: all twelve keys orbiting a core, and the source of every attack. You have every move from
-the start (F major in scale mode: A + G power shot, A + D + G triad, A + D resolves violet lasers,
-A + F + G sus4, Space to dash), with 3 hearts plus any hidden hearts found.
+The Circle: all twelve keys orbiting a core, and the source of every attack. Every piano key plays from
+the start, and the fight changes key with each phase: C major while you break C, G major while you
+break G, and so on, back to F for the core. Scale mode keeps the moves on the same keys in every key
+(A + G power shot, A + D + G triad, A + D resolves violet lasers, A + F + G sus4, Space to dash).
+You have 3 hearts plus any hidden hearts found.
 
 The fight is 12 short phases, one per key. The health bar is one bar split into 12 sections; emptying
 a section breaks off an orbiting key (C first, then G, D … B♭) with a crack-and-shatter animation and

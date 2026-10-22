@@ -41,15 +41,37 @@
   // arpeggio fans and red lasers. You have every move from the start. At zero
   // health it waits for F major, and F resolves home to C.
   const W = 900, H = 400;
-  const ROOT = 53; // F3
-  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // F G A B♭ C D E F on A–K
-  const SHARP_NAMES = ['F', 'G', 'A', 'B♭', 'C', 'D', 'E', 'F'];
-  const FLAT_NAMES = SHARP_NAMES; // F major never respells
-  const ROOT_PC = 5, THIRD_PC = 9, FOURTH_PC = 10, FIFTH_PC = 0;
-  // The boss's fifths: every perfect fifth in F major (E to B♭ isn't one).
-  const FIFTHS = [53, 55, 57, 58, 60, 62].map((m) => [m, m + 7]);
-  // The boss's triads and arpeggios: I, ii, IV, V and vi of F.
-  const TRIADS = [[53, 57, 60], [55, 58, 62], [58, 62, 65], [60, 64, 67], [62, 65, 69]];
+  // The music changes key with each phase: C while you break C, G while you
+  // break G, and so on, back to F for the core. Scale mode always puts the
+  // scale on A–K, so every move stays on the same keys.
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11, 12];
+  let ROOT, SCALE, SHARP_NAMES, ROOT_PC, THIRD_PC, FOURTH_PC, FIFTH_PC, FIFTHS, TRIADS;
+  // Spells a major scale properly: one of each letter, with ♯ or ♭.
+  function spell(key) {
+    const letters = 'CDEFGAB', natural = [0, 2, 4, 5, 7, 9, 11];
+    const start = letters.indexOf(keyLabel(key)[0]);
+    return MAJOR.map((step, i) => {
+      const li = (start + i) % 7;
+      const diff = (KEY_INFO[key].semitones + step - natural[li] + 24) % 12;
+      return letters[li] + (diff === 1 ? '♯' : diff === 11 ? '♭' : '');
+    });
+  }
+  function useKey(key) {
+    ROOT = 48 + KEY_INFO[key].semitones; // C3 up to B3
+    SCALE = MAJOR.map((st) => ROOT + st);
+    SHARP_NAMES = spell(key);
+    ROOT_PC = ROOT % 12; THIRD_PC = (ROOT + 4) % 12; FOURTH_PC = (ROOT + 5) % 12; FIFTH_PC = (ROOT + 7) % 12;
+    const deg = (d) => ROOT + MAJOR[d % 7] + 12 * Math.floor(d / 7);
+    // The boss's fifths: every perfect fifth in the key (vii to IV isn't one).
+    FIFTHS = [0, 1, 2, 3, 4, 5].map((d) => [deg(d), deg(d) + 7]);
+    // The boss's triads and arpeggios: I, ii, IV, V and vi.
+    TRIADS = [0, 1, 3, 4, 5].map((d) => [deg(d), deg(d + 2), deg(d + 4)]);
+    if (S) S.key = key;
+    S && (S.unlocked = new Set(SCALE.map((m) => m % 12)));
+    Level.piano.useScale(ROOT);
+    Level.piano.setNames(SHARP_NAMES);
+    Level.piano.setAllowed(SCALE.map((m) => m % 12)); // every key playable
+  }
   const FIFTH_SPEED = 1.4;   // fifths fly faster than single notes, like your power shot
   const TRIAD_SPREAD = 0.24; // radians between the three notes of a triad volley
   const ARP = { notes: 6, gap: 0.12, fan: 1.0, warn: 0.7 }; // an arpeggio sprayed across the floor
@@ -77,8 +99,6 @@
   const BREAK = 1.4;                     // the pause while a key shatters
   // The colour tier: purple, lilac, then pink for the last few keys.
   const tier = () => (S.phase < 4 ? 0 : S.phase < 8 ? 1 : 2);
-  const ALL = [ROOT_PC, THIRD_PC, FIFTH_PC, FOURTH_PC];
-  const UNLOCKS = PHASES.map(() => ALL);
   const CHORD_WINDOW = 0.09;
   const SHOT_GAP = 0.25;
   const ATTACKS = {
@@ -106,7 +126,7 @@
   let last = 0, paused = false;
   const nameOf = (midi) => {
     const i = SCALE.findIndex((m) => m % 12 === midi % 12);
-    return i >= 0 ? (S && S.flipped ? FLAT_NAMES : SHARP_NAMES)[i] : Piano.noteName(midi);
+    return i >= 0 ? SHARP_NAMES[i] : Piano.noteName(midi);
   };
 
   Level.setup({
@@ -119,7 +139,7 @@
             <h2>The Circle</h2>
             <div class="how">
               <span><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></span><span>Move and dash (dash through lasers)</span>
-              <span><kbd>A</kbd> <kbd>D</kbd> <kbd>G</kbd></span><span>F major: single notes, A + G power shot, A + D + G triad</span>
+              <span><kbd>A</kbd> – <kbd>K</kbd></span><span>Every key plays. A + G power shot, A + D + G triad. The key changes as each one breaks</span>
               <span><kbd>A</kbd> + <kbd>D</kbd></span><span>Resolve a violet laser while it charges or sweeps</span>
               <span><kbd>A</kbd> + <kbd>F</kbd> + <kbd>G</kbd></span><span>Sus4: a shockwave that clears notes and ground waves near you</span>
               <span>Hearts and volume</span><span>Hits take hearts; spamming makes you clip</span>
@@ -140,9 +160,7 @@
         endTitle: stage.querySelector('#endTitle'), endText: stage.querySelector('#endText'),
         endButtons: stage.querySelector('#endButtons'), endHint: stage.querySelector('#endHint'),
       };
-      Level.piano.useScale(ROOT);
-      Level.piano.setNames(SHARP_NAMES);
-      Level.piano.setAllowed(UNLOCKS[0]);
+      useKey('C');
       stage.querySelector('#fightBtn').onclick = (e) => { e.currentTarget.blur(); ui.howTo.classList.remove('show'); begin(); };
       newState();
       requestAnimationFrame(loop);
@@ -158,7 +176,7 @@
       player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
       meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, sus4Cool: 0,
       hearts, maxHearts: hearts, hurtFlash: 0, heartPop: 0,
-      unlocked: new Set(UNLOCKS[0]),
+      unlocked: new Set(), key: 'C',
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
       attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true,
       arps: [], finale: false, shards: [],
@@ -171,9 +189,8 @@
     newState();
     S.running = true;
     ui.end.classList.remove('show');
-    Level.piano.setNames(SHARP_NAMES);
+    useKey('C');
     Level.piano.setEnabled(true);
-    Level.piano.setAllowed([...S.unlocked]);
   }
 
   // ---------- Input ----------
@@ -216,9 +233,9 @@
       if (has(ROOT_PC) && has(THIRD_PC) && has(FIFTH_PC)) return win();
       return playerText('Play F major: A + D + G', 1.4);
     }
-    // Resolving a violet laser: F + A together (no C).
+    // Resolving a violet laser: root + 3rd together (no 5th).
     if (has(ROOT_PC) && has(THIRD_PC) && !has(FIFTH_PC) && S.lasers.some((l) => l.cancellable)) return resolveLasers();
-    // Sus4: F + B♭ + C.
+    // Sus4: root + 4th + 5th.
     if (S.unlocked.has(FOURTH_PC) && has(ROOT_PC) && has(FOURTH_PC) && has(FIFTH_PC)) return sus4();
     if (S.shotGap > 0) return;
     let kind = 'single';
@@ -326,7 +343,7 @@
     // the live beam carries on along the same path at the same speed.
     const make = (fromX, toX, cancellable, reverse) => ({
       stage: 'warn', e: 0, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
-      sound: [ROOT, ROOT + 6].map((m) => Sound.hold(m, cancellable ? 0.09 : 0.12)), // F + B: the tritone
+      sound: [ROOT, ROOT + 6].map((m) => Sound.hold(m, cancellable ? 0.09 : 0.12)), // root + augmented 4th: the tritone
     });
     if (Math.random() < PHASES[S.phase].red) {
       // Red double lasers closing in from both sides: dash through one.
@@ -357,7 +374,7 @@
       for (let i = 0; i < 14; i++) spark(S.boss.x + Math.cos(a) * i * 24, S.boss.y + MUZZLE + Math.sin(a) * i * 24, '#C8B8FF');
       damage(RESOLVE_DAMAGE);
     }
-    Sound.chord([ROOT + 4, ROOT + 12], 0, 1.2, 0.5); // A + F: resolved
+    Sound.chord([ROOT + 4, ROOT + 12], 0, 1.2, 0.5); // 3rd + octave: resolved
     playerText('Resolved!', 1.1);
   }
 
@@ -420,6 +437,9 @@
     S.banner = null;
     const r = rootMidi(key);
     Sound.chord([r, r + 4, r + 7, r + 12], 0, 0.9, 0.45);
+    S.pending = null;
+    useKey(KEYS[next]); // the next key's section is fought in that key
+    if (S.player.stun > 0) Level.piano.setEnabled(false);
   }
 
   function keyPos(i) {
@@ -442,9 +462,8 @@
   function endTransition() {
     const next = S.transition.next;
     S.transition = null;
-    if (PHASES[next].name) S.banner = { text: PHASES[next].name, t: 2.4 };
-    UNLOCKS[next].forEach((pc) => S.unlocked.add(pc));
-    Level.piano.setAllowed([...S.unlocked]);
+    const now = next === 11 ? 'Back to F major' : `Now in ${keyLabel(KEYS[next])} major`;
+    S.banner = { text: PHASES[next].name ? `${now} · ${PHASES[next].name}` : now, t: 2.6 };
     S.attackIn = 1;
     // New attacks start soon; ones already running keep their rhythm.
     const soon = (gap, timer, first) => (!gap ? 99 : timer > 50 ? first : Math.min(timer, gap));
@@ -710,7 +729,7 @@
         ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#181818'; ctx.font = '600 9px Oswald, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('F+C', bx, by + 3);
+        ctx.fillText(`${nameOf(ROOT)}+${nameOf(ROOT + 7)}`, bx, by + 3);
         continue;
       }
       if (w.kind === 'arp') {
@@ -860,9 +879,10 @@
       let x = Math.cos(a) * 74, y = Math.sin(a) * 74, r = 15;
       const k = breaking ? 1 - (br.t - (BREAK - 0.55)) / 0.55 : 0; // 0 to 1 while it cracks
       if (breaking) { x += Math.cos(a) * 26 * k + rand(-3, 3) * k; y += Math.sin(a) * 26 * k + rand(-3, 3) * k; r = 15 + 9 * k; }
-      ctx.fillStyle = breaking ? `rgba(255, 255, 255, ${0.3 + 0.7 * k})` : '#1d1b22';
-      ctx.strokeStyle = breaking ? '#fff' : main; ctx.lineWidth = 2;
-      ctx.shadowColor = breaking ? '#fff' : main; ctx.shadowBlur = breaking ? 10 + 30 * k : 6;
+      const target = !breaking && i === S.phase; // the key you're fighting in
+      ctx.fillStyle = breaking ? `rgba(255, 255, 255, ${0.3 + 0.7 * k})` : target ? pale : '#1d1b22';
+      ctx.strokeStyle = breaking || target ? '#fff' : main; ctx.lineWidth = 2;
+      ctx.shadowColor = breaking ? '#fff' : main; ctx.shadowBlur = breaking ? 10 + 30 * k : target ? 18 : 6;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.shadowBlur = 0;
       if (breaking) {
@@ -876,7 +896,7 @@
           ctx.stroke();
         }
       }
-      ctx.fillStyle = breaking ? '#181818' : pale; ctx.font = `600 ${breaking ? 15 : 13}px Oswald, sans-serif`;
+      ctx.fillStyle = breaking || target ? '#181818' : pale; ctx.font = `600 ${breaking ? 15 : 13}px Oswald, sans-serif`;
       ctx.fillText(label, x, y + 5);
     });
     if (b.stun > 0 && !S.finale) { ctx.fillStyle = pale; ctx.font = '600 16px Oswald, sans-serif'; ctx.fillText('STUNNED', 0, -98); }
@@ -921,6 +941,8 @@
     ctx.fillStyle = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][tier()]; roundRect(BX, 13, BW * (b.hp / 100), 12, 6); ctx.fill();
     ctx.fillStyle = '#121116';
     for (let i = 1; i < 12; i++) ctx.fillRect(BX + (BW * i) / 12 - 1, 12, 2, 14);
+    ctx.fillStyle = '#9A93A3'; ctx.font = '500 12px Oswald, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`KEY OF ${keyLabel(S.key)}`, 16, 44);
     ctx.textAlign = 'right'; ctx.fillStyle = '#E6E1EC';
     ctx.fillText('VOLUME', W - 236, 24);
     ctx.fillStyle = '#26232d'; roundRect(W - 216, 13, 200, 12, 6); ctx.fill();
