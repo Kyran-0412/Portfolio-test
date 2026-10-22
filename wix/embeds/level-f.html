@@ -1128,9 +1128,9 @@ const Level = (() => {
     [315, 0.62, 1.35, 0.3,  0.2,  0, 0.25, 125, 8.5, 2.0,  0.4,  0,   6.5, 0,   'Power-chord bombs'],
     [325, 0.6,  1.3,  0.3,  0.2,  0, 0.3,  130, 8.5, 1.95, 0.4,  0,   5,   0,   'Faster bombs'],
     [330, 0.6,  1.35, 0.3,  0.2,  0, 0.3,  135, 9,   1.9,  0.35, 0,   6.5, 6.5, 'Arpeggio fans'],
-    [340, 0.58, 1.3,  0.3,  0.25, 0, 0.35, 140, 8.5, 1.9,  0.3,  0.5, 7,   6,   'Red lasers: these can’t be resolved'],
-    [355, 0.56, 1.2,  0.35, 0.25, 0, 0.4,  150, 8,   1.85, 0.3,  0.5, 6.5, 5.5, 'Faster'],
-    [370, 0.54, 1.1,  0.35, 0.25, 0, 0.45, 160, 7.5, 1.8,  0.3,  0.6, 6,   5,   'Only F is left'],
+    [340, 0.58, 1.3,  0.3,  0.25, 0, 0.35, 140, 8.5, 1.9,  0.3,  0.4, 7,   6,   'Red lasers: these can’t be resolved'],
+    [355, 0.56, 1.2,  0.35, 0.25, 0, 0.4,  150, 8,   1.85, 0.3,  0.55, 6.5, 5.5, 'Faster'],
+    [370, 0.54, 1.1,  0.35, 0.25, 0, 0.45, 160, 7.5, 1.8,  0.3,  0.7, 6,   5,   'Only F is left'],
   ];
   const PHASES = STAGE_TABLE.map(([speed, warn, gap, fifths, triads, labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name]) =>
     ({ speed, warn, gap, fifths, triads, labels: !!labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name }));
@@ -1223,7 +1223,7 @@ const Level = (() => {
       hearts, maxHearts: hearts, hurtFlash: 0, heartPop: 0,
       unlocked: new Set(), key: 'C',
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
-      attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true,
+      attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true, firstRed: true,
       arps: [], finale: false, shards: [],
       banner: null,
     };
@@ -1391,7 +1391,10 @@ const Level = (() => {
       stage: 'warn', e: 0, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
       sound: silent ? [] : [Sound.laser(cancellable ? 'violet' : 'red', ROOT, cancellable ? 0.09 : 0.12)], // root + augmented 4th: the tritone
     });
-    if (Math.random() < PHASES[S.phase].red) {
+    // The first laser after red ones are announced is always red.
+    const red = PHASES[S.phase].red > 0 && (S.firstRed || Math.random() < PHASES[S.phase].red);
+    if (red) S.firstRed = false;
+    if (red) {
       // Red double lasers closing in from both sides: dash through one.
       S.lasers.push(make(20, p.x + 30, false, false), make(W - 20, p.x - 30, false, false, true)); // one sound for the pair
     } else {
@@ -1514,6 +1517,7 @@ const Level = (() => {
     // New attacks start soon; ones already running keep their rhythm.
     const soon = (gap, timer, first) => (!gap ? 99 : timer > 50 ? first : Math.min(timer, gap));
     S.laserIn = soon(PHASES[next].laserGap, S.laserIn, 2.5);
+    if (PHASES[next].red && S.firstRed) S.laserIn = Math.min(S.laserIn, 2.5); // show the first red one soon
     S.groundIn = soon(PHASES[next].ground, S.groundIn, 3);
     S.arpIn = soon(PHASES[next].arp, S.arpIn, 2);
   }

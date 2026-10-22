@@ -103,7 +103,7 @@ its own chord, and the boss adds something new:
 | D, A | Faster, then violet tritone lasers (A + D resolves) |
 | E, B | Lasers that turn back, then power-chord bombs (they split into ground waves) |
 | F♯, D♭ | Faster bombs, then arpeggio fans |
-| A♭, E♭ | Red lasers that can't be resolved, then faster again |
+| A♭, E♭ | Red lasers that can't be resolved (the first one after the banner is always red, then 40% → 55% → 70% by the core), then faster again |
 | B♭ | Only the F core is left, at top speed |
 
 The stage table (`STAGE_TABLE` in `src/embeds/level-f.html`) holds every number, one row per key.

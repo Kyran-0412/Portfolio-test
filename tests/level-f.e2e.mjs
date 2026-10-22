@@ -138,6 +138,9 @@ try {
   assert.ok(Math.abs(arp.at(-1).a - arp[0].a) > 0.5, 'arpeggio fans across');
   assert.ok(new Set(arp.map((x) => x.pc)).size >= 3, 'arpeggio plays the chord tones');
   await toStage(9);
+  assert.ok(await S(() => window.__boss.laserIn <= 2.5), 'the first red laser comes soon after the banner');
+  await calm();
+  assert.equal(await S(() => { startLasers(); const r = window.__boss.lasers.some((l) => !l.cancellable); window.__boss.lasers.forEach(endLaser); window.__boss.lasers = []; return r; }), true, 'the first laser after the banner is red');
   await calm();
   await S(() => { const s = window.__boss; for (let i = 0; i < 20; i++) { startLasers(); } s.reds = s.lasers.filter((l) => !l.cancellable).length; s.lasers.forEach((l) => l.sound.forEach((x) => x.stop())); s.lasers = []; });
   assert.ok(await S(() => window.__boss.reds > 0), 'phase 3 has red lasers');
