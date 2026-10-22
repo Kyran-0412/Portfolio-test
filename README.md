@@ -32,6 +32,19 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## Audio samples (testing the first one)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-c.html` | Level C page's Embed HTML box (to test the sample in the Tutorial) |
+
+`src/lib/sound.js` now has a piano C4 sample in `SAMPLES` (MIDI note number → Wix Media link). Every
+other note is the nearest sample repitched. In Preview, each level shows a small status line in the top
+left: loaded, blocked by the site (the synth plays instead), or not playable. Players never see it.
+`SAMPLE_GAIN` sets the samples' level next to the synth.
+
 ## Level 12: the Final Boss (The Circle)
 
 **Files to update in Wix**

@@ -69,6 +69,9 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 #piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
+.sample-status { position: absolute; top: 14px; left: 12px; z-index: 5; font: 500 12px var(--heading); letter-spacing: 0.06em; color: var(--glow); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px; }
+.sample-status.bad { color: #ff8fa6; border-color: #c46a7a; }
+.sample-status[hidden] { display: none; }
 
 /* Piano */
 .piano { --white-w: 46px; --black-w: 30px; width: calc(var(--whites) * var(--white-w)); user-select: none; -webkit-user-select: none; }
@@ -222,11 +225,17 @@ const Bridge = (() => {
 // one is pitched to fill the gaps.
 const Sound = (() => {
   // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
-  const SAMPLES = {};
+  const SAMPLES = {
+    60: 'https://static.wixstatic.com/mp3/281301_0dcfb9931e3f4a8090babf401e7d6021.wav', // piano C4 (test)
+  };
 
+  const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
   let ctx = null;
   let out = null;
   const buffers = {};
+  // How the samples are doing, for the Preview-only status line.
+  const status = { total: Object.keys(SAMPLES).length, loaded: 0, blocked: 0, broken: 0, done: false };
+  let onStatus = () => {};
 
   function audio() {
     if (!ctx) {
@@ -240,14 +249,27 @@ const Sound = (() => {
   }
 
   async function loadSamples() {
-    for (const [midi, url] of Object.entries(SAMPLES)) {
+    await Promise.all(Object.entries(SAMPLES).map(async ([midi, url]) => {
+      let data;
       try {
-        const data = await (await fetch(url)).arrayBuffer();
-        buffers[midi] = await ctx.decodeAudioData(data);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(res.status);
+        data = await res.arrayBuffer();
       } catch (err) {
-        // A missing sample falls back to the synth.
+        status.blocked++; // couldn't download it (blocked, or a bad link)
+        return;
       }
-    }
+      try {
+        buffers[midi] = await ctx.decodeAudioData(data);
+        status.loaded++;
+      } catch (err) {
+        status.broken++; // downloaded, but not a sound the browser can play
+      }
+      onStatus(status);
+    }));
+    status.done = true;
+    onStatus(status);
+    // A missing sample just falls back to the synth.
   }
 
   function nearestSample(midi) {
@@ -272,7 +294,7 @@ const Sound = (() => {
       const src = a.createBufferSource();
       src.buffer = buffers[sample];
       src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
-      gain.gain.setValueAtTime(volume, t);
+      gain.gain.setValueAtTime(volume * SAMPLE_GAIN, t);
       src.connect(gain);
       src.start(t);
       sources.push(src);
@@ -359,6 +381,9 @@ const Sound = (() => {
 
   return {
     unlock: audio,
+    // Sample loading progress: { total, loaded, blocked, broken, done }.
+    get samples() { return { ...status }; },
+    onSamples(fn) { onStatus = fn; fn(status); },
     note,
     hold,
     chord,
@@ -673,6 +698,7 @@ const Level = (() => {
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
       <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
+      <div class="sample-status" id="sampleStatus" hidden></div>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -741,6 +767,19 @@ const Level = (() => {
     // Preview only: lets you skip a level while testing the site.
     $('skipBtn').hidden = !testMode;
     $('skipBtn').onclick = () => Level.win();
+    // Preview only: whether your audio samples loaded.
+    if (testMode) {
+      Sound.onSamples((st) => {
+        if (!st.total) return;
+        const el = $('sampleStatus');
+        el.hidden = false;
+        el.className = 'sample-status' + (st.blocked || st.broken ? ' bad' : '');
+        el.textContent = !st.done ? `Samples: loading ${st.loaded} / ${st.total}…`
+          : st.blocked ? `Samples: ${st.loaded} / ${st.total} loaded · ${st.blocked} blocked by the site (using the synth)`
+          : st.broken ? `Samples: ${st.loaded} / ${st.total} loaded · ${st.broken} not playable (check the file type)`
+          : `Samples: ${st.loaded} / ${st.total} loaded`;
+      });
+    }
     onStart($('stage'));
   };
 

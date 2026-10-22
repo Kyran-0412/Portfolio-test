@@ -26,6 +26,7 @@ const Level = (() => {
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
       <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
+      <div class="sample-status" id="sampleStatus" hidden></div>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -94,6 +95,19 @@ const Level = (() => {
     // Preview only: lets you skip a level while testing the site.
     $('skipBtn').hidden = !testMode;
     $('skipBtn').onclick = () => Level.win();
+    // Preview only: whether your audio samples loaded.
+    if (testMode) {
+      Sound.onSamples((st) => {
+        if (!st.total) return;
+        const el = $('sampleStatus');
+        el.hidden = false;
+        el.className = 'sample-status' + (st.blocked || st.broken ? ' bad' : '');
+        el.textContent = !st.done ? `Samples: loading ${st.loaded} / ${st.total}…`
+          : st.blocked ? `Samples: ${st.loaded} / ${st.total} loaded · ${st.blocked} blocked by the site (using the synth)`
+          : st.broken ? `Samples: ${st.loaded} / ${st.total} loaded · ${st.broken} not playable (check the file type)`
+          : `Samples: ${st.loaded} / ${st.total} loaded`;
+      });
+    }
     onStart($('stage'));
   };
 

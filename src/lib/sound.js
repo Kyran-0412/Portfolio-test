@@ -3,11 +3,17 @@
 // one is pitched to fill the gaps.
 const Sound = (() => {
   // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
-  const SAMPLES = {};
+  const SAMPLES = {
+    60: 'https://static.wixstatic.com/mp3/281301_0dcfb9931e3f4a8090babf401e7d6021.wav', // piano C4 (test)
+  };
 
+  const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
   let ctx = null;
   let out = null;
   const buffers = {};
+  // How the samples are doing, for the Preview-only status line.
+  const status = { total: Object.keys(SAMPLES).length, loaded: 0, blocked: 0, broken: 0, done: false };
+  let onStatus = () => {};
 
   function audio() {
     if (!ctx) {
@@ -21,14 +27,27 @@ const Sound = (() => {
   }
 
   async function loadSamples() {
-    for (const [midi, url] of Object.entries(SAMPLES)) {
+    await Promise.all(Object.entries(SAMPLES).map(async ([midi, url]) => {
+      let data;
       try {
-        const data = await (await fetch(url)).arrayBuffer();
-        buffers[midi] = await ctx.decodeAudioData(data);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(res.status);
+        data = await res.arrayBuffer();
       } catch (err) {
-        // A missing sample falls back to the synth.
+        status.blocked++; // couldn't download it (blocked, or a bad link)
+        return;
       }
-    }
+      try {
+        buffers[midi] = await ctx.decodeAudioData(data);
+        status.loaded++;
+      } catch (err) {
+        status.broken++; // downloaded, but not a sound the browser can play
+      }
+      onStatus(status);
+    }));
+    status.done = true;
+    onStatus(status);
+    // A missing sample just falls back to the synth.
   }
 
   function nearestSample(midi) {
@@ -53,7 +72,7 @@ const Sound = (() => {
       const src = a.createBufferSource();
       src.buffer = buffers[sample];
       src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
-      gain.gain.setValueAtTime(volume, t);
+      gain.gain.setValueAtTime(volume * SAMPLE_GAIN, t);
       src.connect(gain);
       src.start(t);
       sources.push(src);
@@ -140,6 +159,9 @@ const Sound = (() => {
 
   return {
     unlock: audio,
+    // Sample loading progress: { total, loaded, blocked, broken, done }.
+    get samples() { return { ...status }; },
+    onSamples(fn) { onStatus = fn; fn(status); },
     note,
     hold,
     chord,
