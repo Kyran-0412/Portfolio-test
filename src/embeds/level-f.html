@@ -114,6 +114,11 @@
   const HEARTS = 3;
   const TRANSITION = 3;
   const CLIP_STUN = 2, CLIP_RESET = 70;
+  // The aim line follows you while it warns, lagging behind, then the shot
+  // flies straight (same as Feedback). follow: how quickly it catches up;
+  // maxSpeed: px/s; miss: each shot aims up to this far to one side.
+  const TRACK = { on: true, follow: 2.2, maxSpeed: 220, miss: 35 };
+  const AIMED = ['note', 'fifth', 'triad']; // fans and bombs keep their fixed marks
   const NOTE_SPEED = 1.25;
   const BOSS_SIZE = 0.72, BOSS_HEALTH = 2.1;
   const MUZZLE = 40 * BOSS_SIZE;
@@ -625,7 +630,15 @@
     }
 
     // Warnings, then attacks
-    S.warnings.forEach((w) => { w.t -= dt; });
+    S.warnings.forEach((w) => {
+      w.t -= dt;
+      if (TRACK.on && AIMED.includes(w.kind)) {
+        if (w.miss === undefined) w.miss = rand(-TRACK.miss, TRACK.miss);
+        const want = aimX() + w.miss - w.tx;
+        const step = want * (1 - Math.exp(-TRACK.follow * dt));
+        w.tx += Math.sign(step) * Math.min(Math.abs(step), TRACK.maxSpeed * dt);
+      }
+    });
     S.warnings.filter((w) => w.t <= 0).forEach((w) => (w.kind === 'ground' ? slam(w) : fire(w)));
     S.warnings = S.warnings.filter((w) => w.t > 0);
     b.warn = S.warnings.some((w) => w.kind !== 'ground') || S.lasers.length ? 1 - Math.min(...S.warnings.map((w) => w.t / w.total), 1) : 0;

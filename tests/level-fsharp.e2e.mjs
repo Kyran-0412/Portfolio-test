@@ -169,6 +169,20 @@ try {
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of F♯.');
   console.log('✓ beating The Tritone gives the key of F♯');
 
+  // Aim lines follow the player with a lag (as in Feedback).
+  await calm();
+  const mid = await S(async () => {
+    const s = window.__boss;
+    s.running = true; s.transition = null; s.over = false; s.finale = false; s.player.x = 200; s.player.safe = 99;
+    s.warnings = [{ t: 0.8, total: 0.8, tx: 200, kind: 'note', midi: 60, miss: 0 }];
+    const w = s.warnings[0];
+    s.player.x = 700;
+    await new Promise((r) => setTimeout(r, 250));
+    return w.tx;
+  });
+  assert.ok(mid > 210 && mid < 500, `the aim line follows but lags (${Math.round(mid)})`);
+  console.log('✓ aim lines follow you with a lag');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Level 7 browser checks passed.');
 } finally {
