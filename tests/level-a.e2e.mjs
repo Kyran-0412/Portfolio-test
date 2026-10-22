@@ -170,24 +170,6 @@ try {
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of A.');
   console.log('✓ beating the boss gives the key of A');
 
-  // With drums playing, the boss's shots land on the beat (8th notes).
-  const grid = await S(() => {
-    const m = window.__music(), a = Sound.unlock();
-    const len = 60 / 120 / 2;
-    m.beat = { t0: a.currentTime - 0.37, len };
-    const s = window.__boss;
-    s.running = true; s.warnings = [];
-    for (let i = 0; i < 10; i++) attack();
-    const now = a.currentTime;
-    const off = s.warnings.map((w) => ((now + w.t - m.beat.t0) / len) % 1).map((x) => Math.min(x, 1 - x));
-    const longest = Math.max(...s.warnings.map((w) => w.t));
-    m.beat = null; s.warnings = [];
-    return { off: Math.max(...off), longest };
-  });
-  assert.ok(grid.off < 0.02, `shots land on 8th notes (${grid.off})`);
-  assert.ok(grid.longest < 0.75 + 0.15 + 0.25 + 0.01, 'a warning stretches by at most one 8th');
-  console.log('✓ with drums playing, the boss fires on the beat');
-
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Level 4 browser checks passed.');
 } finally {

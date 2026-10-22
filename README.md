@@ -46,6 +46,9 @@ piano. Feedback's notes are in `SOUNDS.feedback` in `src/lib/sound.js` (A3 to Eâ
 The game adds the release (`release` in `Sound.instrument('feedback', â€¦)` near the top of the level).
 Until a synth's samples load, the boss plays the piano.
 
+A drone loops under each fight (`feedback-drone` for now): it fades in when the fight starts and out
+when it ends. `MUSIC_GAIN` in `src/lib/sound.js` sets its level.
+
 ## Laser sounds
 
 **Files to update in Wix**

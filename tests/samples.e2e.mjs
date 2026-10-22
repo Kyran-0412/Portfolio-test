@@ -126,7 +126,11 @@ try {
   await fb.locator('#startBtn').click();
   const ff = page.frames().find((f) => f.url().includes('level-a.html'));
   await ff.waitForFunction(() => Sound.samples.done && Sound.has('feedback'), null, { timeout: 8000 });
-  assert.equal(await fb.locator('#sampleStatus').textContent(), `Samples: ${total + 7} / ${total + 7} loaded`, 'piano + 7 Feedback notes, no lasers');
+  assert.equal(await fb.locator('#sampleStatus').textContent(), `Samples: ${total + 8} / ${total + 8} loaded`, 'piano + 7 Feedback notes + its drone, no lasers');
+  await ff.waitForFunction(() => Sound.has('feedback-drone'));
+  await fb.locator('#fightBtn').click();
+  await ff.waitForFunction(() => window.__drone() !== null, null, { timeout: 3000 });
+  console.log('✓ the drone starts with the fight');
   const held = await ff.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a);

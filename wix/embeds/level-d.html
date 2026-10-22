@@ -271,7 +271,8 @@ const Sound = (() => {
       75: 'https://static.wixstatic.com/mp3/281301_16f671b2217b41f598861eff6aebcff1.wav', // E♭5
     },
   });
-  // Backing tracks (drones and drum loops) go in SOUNDS too, as plain links.
+  // Backing drones: seamless loops, one per fight.
+  SOUNDS['feedback-drone'] = 'https://static.wixstatic.com/mp3/281301_3b6fac472b82426082449c2928c7c1c7.wav'; // A
   const MUSIC_GAIN = 0.5; // backing tracks' level under everything else
   const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
   const LASER_FADE = 0.5; // seconds a laser's sound takes to fade out when it ends
@@ -571,9 +572,8 @@ const Sound = (() => {
     return inst;
   }
 
-  // A backing track: loops the whole file (WAV loops are cut to exact bars,
-  // so nothing is trimmed). Returns null if its file isn't loaded, so a fight
-  // with no music yet just carries on. start is when its first downbeat plays.
+  // A backing track: loops the whole file. Returns null if its file isn't
+  // loaded, so a fight with no music yet just carries on.
   function track(name, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
     const buf = named[name];
     if (!buf || !buf.getChannelData) return null;

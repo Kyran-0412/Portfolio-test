@@ -41,10 +41,9 @@
   const ROOT = 57; // A3
   // The boss's own synth (your attacks stay on the piano). Long, washy release.
   const BOSS = Sound.instrument('feedback', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
-  // Backing: a drone under the whole fight, and a drum loop per phase at its
-  // own tempo. While drums play, the boss's shots land on the beat (8ths).
-  const MUSIC = { drone: 'feedback-drone', drums: ['feedback-drums-1', 'feedback-drums-2', 'feedback-drums-3'], bpm: [120, 128, 136] };
-  let music = { drone: null, drums: null, beat: null };
+  // Backing: a drone in A under the whole fight.
+  const DRONE = 'feedback-drone';
+  let drone = null;
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
   const TRIADS = [ // diatonic chords of A major, as MIDI notes
     { name: 'A', notes: [57, 61, 64], major: true }, { name: 'D', notes: [62, 66, 69], major: true },
@@ -116,7 +115,7 @@
             <div class="buttons" id="endButtons"></div>
           </div>
         </div>`;
-      Sound.preload(['feedback', MUSIC.drone, ...MUSIC.drums]);
+      Sound.preload(['feedback', DRONE]);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -149,33 +148,19 @@
   }
 
   // ---------- Music ----------
-  function startDrums(phase) {
-    if (music.drums) music.drums.stop(0.3);
-    music.drums = Sound.track(MUSIC.drums[phase]);
-    music.beat = music.drums ? { t0: music.drums.start, len: 60 / MUSIC.bpm[phase] / 2 } : null;
-  }
-  function startMusic(phase) {
+  function startMusic() {
     stopMusic(0.3);
-    music.drone = Sound.track(MUSIC.drone, { fadeIn: 1.5 });
-    startDrums(phase);
+    drone = Sound.track(DRONE, { fadeIn: 1.5 });
   }
   function stopMusic(fade = 1.2) {
-    if (music.drone) music.drone.stop(fade);
-    if (music.drums) music.drums.stop(fade);
-    music = { drone: null, drums: null, beat: null };
+    if (drone) drone.stop(fade);
+    drone = null;
   }
-  // Stretches a warning so the shot lands on the next 8th note of the drums.
-  function onBeat(warn) {
-    if (!music.beat) return warn;
-    const now = Sound.unlock().currentTime, { t0, len } = music.beat;
-    const at = t0 + Math.ceil((now + warn - t0) / len) * len;
-    return at - now;
-  }
-  window.__music = () => music; // for automatic tests
+  window.__drone = () => drone; // for automatic tests
 
   function begin(phase) {
     newState(phase);
-    startMusic(phase);
+    startMusic();
     S.running = true;
     ui.end.classList.remove('show');
     Level.piano.setEnabled(true);
@@ -303,11 +288,9 @@
     const tx = aimX();
     if (chord) {
       const triad = pick(TRIADS);
-      const t = onBeat(ph.warn + 0.15);
-      S.warnings.push({ t, total: t, tx, kind: 'chord', triad });
+      S.warnings.push({ t: ph.warn + 0.15, total: ph.warn + 0.15, tx, kind: 'chord', triad });
     } else {
-      const t = onBeat(ph.warn);
-      S.warnings.push({ t, total: t, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
+      S.warnings.push({ t: ph.warn, total: ph.warn, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
     }
   }
 
@@ -398,9 +381,6 @@
     S.notes = [];
     S.banner = null;
     Sound.chord([rootMidi('A') - 12, rootMidi('A') - 5], 0, TRANSITION, 0.25);
-    // The drums fade out over the pause; the next phase's loop starts after it.
-    if (music.drums) music.drums.stop(TRANSITION * 0.8);
-    music.drums = null; music.beat = null;
   }
 
   function endTransition() {
@@ -410,7 +390,6 @@
     if (next === 1) { S.unlocked.add(FIFTH_PC); Level.piano.setAllowed([...S.unlocked]); }
     if (next === 2 && !thirdFound) startMoment();
     S.attackIn = 1;
-    startDrums(next);
   }
 
   function hurt() {
