@@ -275,7 +275,8 @@ const Sound = (() => {
   let onStatus = () => {};
 
   // An optional shared reverb for notes (piano and instruments). A level
-  // turns it on with Sound.reverb({ mix, seconds }); the rest stay dry.
+  // turns it on with Sound.reverb({ mix, seconds, piano, instruments }), where
+  // piano and instruments scale how much of each goes in; the rest stay dry.
   let reverbIn = null, reverbWanted = null;
   function buildReverb({ mix = 0.22, seconds = 2.2 } = {}) {
     const len = Math.round(ctx.sampleRate * seconds), ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -290,7 +291,13 @@ const Sound = (() => {
     reverbIn = ctx.createGain();
     reverbIn.connect(conv).connect(wet).connect(out);
   }
-  const toReverb = (node) => { if (reverbIn) node.connect(reverbIn); };
+  // send: how much of this sound goes to the reverb (1 = the level's mix).
+  const toReverb = (node, send = 1) => {
+    if (!reverbIn || send <= 0) return;
+    const g = ctx.createGain();
+    g.gain.value = send;
+    node.connect(g).connect(reverbIn);
+  };
 
   function audio() {
     if (!ctx) {
@@ -404,7 +411,7 @@ const Sound = (() => {
     const a = audio();
     const gain = a.createGain();
     gain.connect(out);
-    toReverb(gain);
+    toReverb(gain, reverbWanted ? reverbWanted.piano ?? 1 : 0); // the piano (your keys)
     const sources = [];
 
     const sample = synthOnly ? null : nearestSample(midi);
@@ -513,7 +520,7 @@ const Sound = (() => {
     const master = a.createGain();
     master.gain.value = volume;
     master.connect(out);
-    toReverb(master);
+    toReverb(master, reverbWanted ? reverbWanted.instruments ?? 1 : 0); // boss synths and other instruments
     const srcs = [];
     const play = (offset, at, fade) => {
       const src = a.createBufferSource(), g = a.createGain();
