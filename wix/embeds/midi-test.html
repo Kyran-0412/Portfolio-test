@@ -164,7 +164,7 @@ const Sound = (() => {
   // An optional shared reverb for notes (piano and instruments). A level
   // turns it on with Sound.reverb({ mix, seconds, piano, instruments }), where
   // piano and instruments scale how much of each goes in; the rest stay dry.
-  let reverbIn = null, reverbWanted = null;
+  let reverbIn = null, reverbWanted = null, reverbWet = null, dry = null;
   function buildReverb({ mix = 0.22, seconds = 2.2 } = {}) {
     const len = Math.round(ctx.sampleRate * seconds), ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let c = 0; c < 2; c++) {
@@ -177,7 +177,10 @@ const Sound = (() => {
     wet.gain.value = mix;
     reverbIn = ctx.createGain();
     reverbIn.connect(conv).connect(wet).connect(out);
+    reverbWet = wet;
   }
+  // Notes go through this, so Preview can mute the direct sound and leave only the reverb.
+  const dryOut = () => dry || out;
   // send: how much of this sound goes to the reverb (1 = the level's mix).
   const toReverb = (node, send = 1) => {
     if (!reverbIn || send <= 0) return;
@@ -191,6 +194,8 @@ const Sound = (() => {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       out = ctx.createDynamicsCompressor();
       out.connect(ctx.destination);
+      dry = ctx.createGain();
+      dry.connect(out);
       if (reverbWanted) buildReverb(reverbWanted);
       Object.entries(SAMPLES).forEach(([midi, url]) => load(url, (b) => { buffers[midi] = b; }));
       wanted.forEach(loadNamed);
@@ -297,7 +302,7 @@ const Sound = (() => {
   function voice(midi, t, volume, synthOnly = false) {
     const a = audio();
     const gain = a.createGain();
-    gain.connect(out);
+    gain.connect(dryOut());
     toReverb(gain, reverbWanted ? reverbWanted.piano ?? 1 : 0); // the piano (your keys)
     const sources = [];
 
@@ -406,7 +411,7 @@ const Sound = (() => {
     const a = audio();
     const master = a.createGain();
     master.gain.value = volume;
-    master.connect(out);
+    master.connect(dryOut());
     toReverb(master, reverbWanted ? reverbWanted.instruments ?? 1 : 0); // boss synths and other instruments
     const srcs = [];
     const play = (offset, at, fade) => {
@@ -530,6 +535,13 @@ const Sound = (() => {
     unlock: audio,
     reverb(options) { reverbWanted = options || {}; if (ctx && !reverbIn) buildReverb(reverbWanted); },
     get hasReverb() { return !!reverbIn; },
+    // Preview only: 'normal', 'wet' (just the reverb, loud enough to judge) or 'off'.
+    reverbTest(mode) {
+      if (!reverbIn) return;
+      const t = ctx.currentTime, mix = (reverbWanted && reverbWanted.mix) || 0.22;
+      dry.gain.setTargetAtTime(mode === 'wet' ? 0 : 1, t, 0.02);
+      reverbWet.gain.setTargetAtTime(mode === 'off' ? 0 : mode === 'wet' ? 1 : mix, t, 0.02);
+    },
     laser,
     instrument,
     track,

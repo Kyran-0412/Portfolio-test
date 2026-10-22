@@ -73,6 +73,7 @@ try {
   ({ game } = await play('preview', 'ok'));
   assert.equal(await page.frames().find((f) => f.url().includes('level-c.html')).evaluate(() => Sound.has('red-beam')), false, 'the Tutorial skips laser sounds');
   assert.equal(await page.frames().find((f) => f.url().includes('level-c.html')).evaluate(() => Sound.hasReverb), false, 'the Tutorial stays dry');
+  assert.equal(await game.locator('#reverbTest').isVisible(), false, 'no reverb switch without reverb');
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E', 'B'] })));
   await page.goto(`${base}/dev/sim.html?page=level-fsharp`);
   const boss = page.frameLocator('#gameEmbed');
@@ -132,6 +133,12 @@ try {
   await fb.locator('#fightBtn').click();
   await ff.waitForFunction(() => window.__drone() !== null, null, { timeout: 3000 });
   assert.equal(await ff.evaluate(() => Sound.hasReverb), true, 'Feedback has reverb');
+  await fb.locator('#reverbTest', { hasText: 'Reverb: normal' }).click();
+  assert.equal(await fb.locator('#reverbTest').textContent(), 'Reverb: 100% wet');
+  await fb.locator('#reverbTest').click();
+  assert.equal(await fb.locator('#reverbTest').textContent(), 'Reverb: off');
+  await fb.locator('#reverbTest').click();
+  assert.equal(await fb.locator('#reverbTest').textContent(), 'Reverb: normal');
   console.log('✓ the drone starts with the fight, with reverb on the notes');
   const held = await ff.evaluate(async () => {
     const a = Sound.unlock(), made = [];

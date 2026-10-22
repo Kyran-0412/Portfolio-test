@@ -27,6 +27,7 @@ const Level = (() => {
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
       <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
       <div class="sample-status" id="sampleStatus" hidden></div>
+      <button class="reverb-test" id="reverbTest" hidden>Reverb: normal</button>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -109,6 +110,13 @@ const Level = (() => {
       });
     }
     onStart($('stage'));
+    // Preview only: hear the reverb on its own, or without it.
+    if (testMode && Sound.hasReverb) { // the level has just turned its reverb on
+      const modes = ['normal', 'wet', 'off'], labels = { normal: 'Reverb: normal', wet: 'Reverb: 100% wet', off: 'Reverb: off' };
+      let m = 0;
+      $('reverbTest').hidden = false;
+      $('reverbTest').onclick = (e) => { e.currentTarget.blur(); m = (m + 1) % 3; Sound.reverbTest(modes[m]); $('reverbTest').textContent = labels[modes[m]]; };
+    }
   };
 
   Bridge.on('levelSaved', (message) => {
