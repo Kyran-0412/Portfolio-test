@@ -243,6 +243,7 @@ const Sound = (() => {
     },
   };
   const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
+  const LASER_FADE = 0.5; // seconds a laser's sound takes to fade out when it ends
 
   const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
   let ctx = null;
@@ -334,8 +335,9 @@ const Sound = (() => {
         const now = a.currentTime;
         gain.gain.cancelScheduledValues(now);
         gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(0.0001, now + fade);
-        src.stop(now + fade + 0.02);
+        if (fade > 0.2) gain.gain.setTargetAtTime(0.0001, now, fade / 4); // a smooth tail for long fades
+        else gain.gain.linearRampToValueAtTime(0.0001, now + fade);
+        src.stop(now + fade + 0.05);
       },
     };
   }
@@ -397,6 +399,14 @@ const Sound = (() => {
 
     let stopped = false;
     return {
+      fadeOut(seconds) {
+        if (stopped) return;
+        stopped = true;
+        const now = a.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setTargetAtTime(0.0001, now, seconds / 4);
+        sources.forEach((src) => src.stop(now + seconds + 0.1));
+      },
       stop(at = a.currentTime) {
         if (stopped) return;
         stopped = true;
@@ -479,7 +489,7 @@ const Sound = (() => {
         if (loops) { const n = nearestIn(loops, root); parts.push(playBuffer(n.buf, { rate: n.rate, loop: true, volume: LASER_GAIN })); }
         else parts.push(...synth());
       },
-      stop() { stopped = true; parts.forEach((v) => v.stop()); },
+      stop() { stopped = true; parts.forEach((v) => (v.fadeOut ? v.fadeOut(LASER_FADE) : v.stop(LASER_FADE))); },
     };
   }
 
