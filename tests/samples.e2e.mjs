@@ -8,6 +8,16 @@ const shots = process.env.SHOTS || '/tmp';
 const { base, page, errors, close } = await start();
 const wav = await readFile(new URL('../dev/test-assets/test-note-C4.wav', import.meta.url));
 const SAMPLE = /static\.wixstatic\.com\/mp3\//;
+// A 5-second steady tone, like a boss synth note.
+function longWav(seconds = 5, rate = 22050) {
+  const n = seconds * rate, buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8);
+  buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / rate) * 12000), 44 + i * 2);
+  return buf;
+}
+const long = longWav();
 
 async function play(mode, how) {
   await page.unroute(SAMPLE);
@@ -106,6 +116,31 @@ try {
   assert.ok(log.violetLoop, 'the violet beam loops');
   assert.equal(log.violetOscs, 0, 'no synth left in the lasers');
   console.log('✓ lasers: only the fights load them; charge → hit + pitched beam loop; both colours fully sampled');
+
+  // Feedback's boss synth: only its fight loads it; holds outlast the 5 s note.
+  await page.unroute(SAMPLE);
+  await page.route(SAMPLE, (r) => r.fulfill({ body: long, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }));
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D'] })));
+  await page.goto(`${base}/dev/sim.html?page=level-a`);
+  const fb = page.frameLocator('#gameEmbed');
+  await fb.locator('#startBtn').click();
+  const ff = page.frames().find((f) => f.url().includes('level-a.html'));
+  await ff.waitForFunction(() => Sound.samples.done && Sound.has('feedback'), null, { timeout: 8000 });
+  assert.equal(await fb.locator('#sampleStatus').textContent(), `Samples: ${total + 7} / ${total + 7} loaded`, 'piano + 7 Feedback notes, no lasers');
+  const held = await ff.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    const h = BOSS.hold(64, 0.18); // E4: the E♭4 note, shifted up a semitone
+    await new Promise((r) => setTimeout(r, 4600)); // past the first repeat point
+    const out = { sources: made.length, rate: made[0].playbackRate.value };
+    h.stop();
+    a.createBufferSource = orig;
+    return out;
+  });
+  assert.ok(held.sources >= 2, `a long hold repeats the steady middle (${held.sources} segments)`);
+  assert.ok(Math.abs(held.rate - Math.pow(2, 1 / 12)) < 1e-6, 'E4 is E♭4 up a semitone');
+  console.log('✓ Feedback’s synth: loads only in its fight; holds keep ringing past the end of the 5 s note');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');

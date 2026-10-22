@@ -39,6 +39,8 @@
   // notes of A major upwards. Matching an incoming note's pitch cancels it.
   const W = 900, H = 400;
   const ROOT = 57; // A3
+  // The boss's own synth (your attacks stay on the piano). Long, washy release.
+  const BOSS = Sound.instrument('feedback', { release: 0.7 });
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
   const TRIADS = [ // diatonic chords of A major, as MIDI notes
     { name: 'A', notes: [57, 61, 64], major: true }, { name: 'D', notes: [62, 66, 69], major: true },
@@ -110,6 +112,7 @@
             <div class="buttons" id="endButtons"></div>
           </div>
         </div>`;
+      Sound.preload(['feedback']);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -223,7 +226,7 @@
   // The third unlocks in a moment: the boss holds A and E, and you find the
   // missing note. Every key works while you search.
   function startMoment() {
-    S.moment = { tries: 0, sounds: [57, 64].map((m) => Sound.hold(m, 0.18)) };
+    S.moment = { tries: 0, sounds: [57, 64].map((m) => BOSS.hold(m, 0.18)) };
     S.banner = { text: 'It’s holding A and E. Find the missing note!', t: 3 };
     Level.piano.setAllowed(null);
   }
@@ -289,11 +292,11 @@
     };
     if (w.kind === 'note') {
       launch(w.midi, base, 'note');
-      Sound.note(w.midi, 0, 0.45, 0.4);
+      BOSS.note(w.midi, 0, 0.45, 0.4);
     } else {
       const spread = w.triad.major ? 0.3 : 0.14; // major chords spread wide, minor narrow
       w.triad.notes.forEach((m, i) => launch(m, base + (i - 1) * spread, 'chord'));
-      Sound.chord(w.triad.notes, 0, 0.6, 0.5);
+      BOSS.chord(w.triad.notes, 0, 0.6, 0.5);
     }
   }
 
@@ -303,7 +306,7 @@
     const missing = Math.floor(Math.random() * 3);
     S.held = {
       triad, missing: triad.notes[missing], index: missing, t: 4.5,
-      sounds: triad.notes.filter((_, i) => i !== missing).map((m) => Sound.hold(m, 0.18)),
+      sounds: triad.notes.filter((_, i) => i !== missing).map((m) => BOSS.hold(m, 0.18)),
     };
     if (S.firstHold) {
       S.firstHold = false;

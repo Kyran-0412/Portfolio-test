@@ -242,6 +242,18 @@ const Sound = (() => {
       57: 'https://static.wixstatic.com/mp3/281301_354f80533ef3488590d435576b2b7a6a.wav', // A3 + E♭4
     },
   };
+  // Boss synths: one note every 3 semitones, each about 5 s with a steady sustain.
+  Object.assign(SOUNDS, {
+    feedback: {
+      57: 'https://static.wixstatic.com/mp3/281301_41c9f10c6b284529912a82b172154267.wav', // A3
+      60: 'https://static.wixstatic.com/mp3/281301_a601a30fb9364a829f8803244061bb7f.wav', // C4
+      63: 'https://static.wixstatic.com/mp3/281301_95de0472ef904f55bb8541b0ae13c449.wav', // E♭4
+      66: 'https://static.wixstatic.com/mp3/281301_408c18bbdc6d4f82a7a643ed8abf5ef5.wav', // F♯4
+      69: 'https://static.wixstatic.com/mp3/281301_884f30e48b784781bc0896794f761aea.wav', // A4
+      72: 'https://static.wixstatic.com/mp3/281301_8bef76fb25704355bb0396dbaa0762bd.wav', // C5
+      75: 'https://static.wixstatic.com/mp3/281301_16f671b2217b41f598861eff6aebcff1.wav', // E♭5
+    },
+  });
   const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
   const LASER_FADE = 0.5; // seconds a laser's sound takes to fade out when it ends
 
@@ -467,6 +479,79 @@ const Sound = (() => {
     osc.stop(t + length + 0.05);
   }
 
+  // A pitched sample that rings until stop(). With sustain, a hold longer
+  // than the sample repeats its steady middle (from 1 s to just before the
+  // end), crossfading each time so there's no click.
+  function sampledVoice(buf, rate, volume, sustain) {
+    const a = audio();
+    const master = a.createGain();
+    master.gain.value = volume;
+    master.connect(out);
+    const srcs = [];
+    const play = (offset, at, fade) => {
+      const src = a.createBufferSource(), g = a.createGain();
+      src.buffer = buf; src.playbackRate.value = rate;
+      src.connect(g).connect(master);
+      if (fade) { g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(1, at + fade); }
+      src.start(at, offset);
+      srcs.push(src);
+      return g;
+    };
+    let segStart = a.currentTime + 0.01, segOffset = 0, gain = play(0, segStart, 0), timer = null;
+    const LOOP_FROM = 1, XF = 0.3, end = buf.duration - 0.6;
+    if (sustain && end - LOOP_FROM > XF * 2) {
+      const next = () => {
+        const at = segStart + (end - XF - segOffset) / rate, fade = XF / rate;
+        timer = setTimeout(() => {
+          const old = gain;
+          gain = play(LOOP_FROM, at, fade);
+          old.gain.setValueAtTime(1, at); old.gain.linearRampToValueAtTime(0, at + fade);
+          segStart = at; segOffset = LOOP_FROM;
+          next();
+        }, Math.max(0, (at - a.currentTime - 0.25) * 1000));
+      };
+      next();
+    }
+    let stopped = false;
+    return {
+      stop(release = 0.5) {
+        if (stopped) return;
+        stopped = true;
+        clearTimeout(timer);
+        const now = a.currentTime;
+        master.gain.cancelScheduledValues(now);
+        master.gain.setValueAtTime(master.gain.value, now);
+        master.gain.setTargetAtTime(0.0001, now, release / 4);
+        srcs.forEach((src) => { try { src.stop(now + release + 0.1); } catch (e) { /* already ended */ } });
+      },
+    };
+  }
+
+  // A sampled instrument (like a boss synth) with the same note / chord / hold
+  // calls as the piano. Until its samples load, it plays the piano instead.
+  function instrument(name, { gain = 1, release = 0.5 } = {}) {
+    const ready = () => named[name] && Object.keys(named[name]).length;
+    const start = (midi, volume, sustain) => {
+      const n = nearestIn(named[name], midi);
+      return sampledVoice(n.buf, n.rate, volume * SAMPLE_GAIN * gain, sustain);
+    };
+    const inst = {
+      note(midi, when = 0, length = 1.2, volume = 0.4) {
+        if (!ready()) return note(midi, when, length, volume);
+        setTimeout(() => { const v = start(midi, volume, length > 4); setTimeout(() => v.stop(release), length * 1000); }, when * 1000);
+      },
+      chord(midis, when = 0, length = 1.2, volume = 0.4) {
+        midis.forEach((m) => inst.note(m, when, length, volume / Math.sqrt(midis.length)));
+      },
+      hold(midi, volume = 0.4) {
+        if (!ready()) return hold(midi, volume);
+        const v = start(midi, volume, true);
+        return { stop: () => v.stop(release) };
+      },
+    };
+    return inst;
+  }
+
   // A laser's sound, in three parts: the charge while it warns, then (call
   // live()) the hit plus the beam loop underneath it. Any part without a
   // sample uses the old synth tritone instead. stop() fades everything.
@@ -496,6 +581,7 @@ const Sound = (() => {
   return {
     unlock: audio,
     laser,
+    instrument,
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],
