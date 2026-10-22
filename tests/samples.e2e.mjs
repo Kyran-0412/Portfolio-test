@@ -28,7 +28,9 @@ try {
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: [] })));
 
   let { game, frame } = await play('preview', 'ok');
-  assert.equal(await game.locator('#sampleStatus').textContent(), 'Samples: 1 / 1 loaded');
+  const total = await frame.evaluate(() => Sound.samples.total);
+  assert.ok(total >= 14, `${total} piano samples listed`);
+  assert.equal(await game.locator('#sampleStatus').textContent(), `Samples: ${total} / ${total} loaded`);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/samples-ok.png` });
   // Playing a note uses the sample (a buffer source) rather than the synth.
   const used = await frame.evaluate(() => {
@@ -41,10 +43,10 @@ try {
     return kind;
   });
   assert.equal(used, 'sample', 'E4 is played from the C4 sample, repitched');
-  console.log('✓ the sample loads, Preview says "1 / 1 loaded", and notes play from it');
+  console.log(`✓ all ${total} samples load, Preview says "${total} / ${total} loaded", and notes play from them`);
 
   ({ game } = await play('preview', 'blocked'));
-  assert.match(await game.locator('#sampleStatus').textContent(), /1 blocked by the site \(using the synth\)/);
+  assert.match(await game.locator('#sampleStatus').textContent(), /blocked by the site \(using the synth\)/);
   assert.match(await game.locator('#sampleStatus').getAttribute('class'), /bad/);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/samples-blocked.png` });
   console.log('✓ a blocked link says so, and the synth plays instead');

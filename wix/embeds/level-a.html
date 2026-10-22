@@ -198,8 +198,26 @@ const Bridge = (() => {
 // one is pitched to fill the gaps.
 const Sound = (() => {
   // MIDI note number → sample link, e.g. { 60: 'https://static.wixstatic.com/mp3/...' }
+  // Piano: one note every 3 semitones from C2 to C6. Everything in between,
+  // and above or below, is the nearest one repitched.
   const SAMPLES = {
-    60: 'https://static.wixstatic.com/mp3/281301_0dcfb9931e3f4a8090babf401e7d6021.wav', // piano C4 (test)
+    36: 'https://static.wixstatic.com/mp3/281301_c7acf76ee6704f4f8472746d60b6ba09.wav', // C2
+    39: 'https://static.wixstatic.com/mp3/281301_653af0d7a1c84996a486e6a52876b9a6.wav', // E♭2
+    42: 'https://static.wixstatic.com/mp3/281301_8b801a53be144a509820b74c399ee184.wav', // F♯2
+    45: 'https://static.wixstatic.com/mp3/281301_28e36fb856ad4cc1b48521b37f857a23.wav', // A2
+    // 48: C3, waiting for its link
+    51: 'https://static.wixstatic.com/mp3/281301_96e88d23eab648d394a5a73bca193f23.wav', // E♭3
+    54: 'https://static.wixstatic.com/mp3/281301_88e72b881bae4d7a8f02593460b3195f.mp3', // F♯3
+    57: 'https://static.wixstatic.com/mp3/281301_584c436cd10a444793c67398eab8fdb6.wav', // A3
+    // 60: C4, waiting for its link
+    63: 'https://static.wixstatic.com/mp3/281301_f6ee58761130423fa01f5fd4b1c2311d.wav', // E♭4
+    66: 'https://static.wixstatic.com/mp3/281301_4225b49d9e324fefa5b4eb80e23b2907.wav', // F♯4
+    69: 'https://static.wixstatic.com/mp3/281301_fe73ec5600624c0491122f9f8fde20ef.wav', // A4
+    // 72: C5, waiting for its link
+    75: 'https://static.wixstatic.com/mp3/281301_331a2181f06d45428bcf646539b1046e.wav', // E♭5
+    78: 'https://static.wixstatic.com/mp3/281301_2ba56f64a7324ee7b340dd1501cd8070.wav', // F♯5
+    81: 'https://static.wixstatic.com/mp3/281301_b5b475fd6e374154b62c12a7c61bd67c.wav', // A5
+    84: 'https://static.wixstatic.com/mp3/281301_df0024f76ace48bb9d646668e6c85134.wav', // C6
   };
 
   const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
