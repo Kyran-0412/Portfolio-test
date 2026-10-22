@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level 12: Final Boss</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+<link data-include="lib/theme.css">
+<link data-include="lib/level.css">
+<style>
+  #play { padding-top: 8px; }
+  .arena { position: relative; width: 900px; max-width: 100%; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
+  .overlay {
+    position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: rgba(18, 17, 22, 0.94); border-radius: 10px; text-align: center; padding: 16px;
+  }
+  .overlay.show { display: flex; animation: fade-in 0.3s ease-out both; }
+  .overlay h2 { margin: 0; font: 600 34px var(--heading); letter-spacing: 0.02em; }
+  .how { display: grid; grid-template-columns: auto auto; gap: 6px 18px; text-align: left; font-size: 14px; color: var(--text); }
+  .how kbd { font: 600 13px var(--heading); color: var(--glow); background: var(--panel); border: 1px solid var(--mid); border-radius: 5px; padding: 1px 7px; }
+  .hint { color: #ff8fa6; font-size: 13px; }
+  .piano.scale-mode { --white-w: 58px; }
+  .piano.scale-mode .piano-keys { height: 112px; }
+  .piano.scale-mode .piano-name { font-size: 13px; color: #362d40; opacity: 1; }
+  .piano.scale-mode .piano-help { visibility: hidden; }
+</style>
+</head>
+<body>
+<script data-include="lib/keys.js"></script>
+<script data-include="lib/bridge.js"></script>
+<script data-include="lib/sound.js"></script>
+<script data-include="lib/piano.js"></script>
+<script data-include="lib/level.js"></script>
+<script>
+  // Level 12, key of F: the Final Boss, The Circle. All twelve keys orbit its
+  // core, and every attack comes from it: notes, fifths and triads, then
+  // tritone lasers and power-chord bombs that split into ground waves, then
+  // arpeggio fans and red lasers. You have every move from the start. At zero
+  // health it waits for F major, and F resolves home to C.
+  const W = 900, H = 400;
+  const ROOT = 53; // F3
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // F G A B♭ C D E F on A–K
+  const SHARP_NAMES = ['F', 'G', 'A', 'B♭', 'C', 'D', 'E', 'F'];
+  const FLAT_NAMES = SHARP_NAMES; // F major never respells
+  const ROOT_PC = 5, THIRD_PC = 9, FOURTH_PC = 10, FIFTH_PC = 0;
+  // The boss's fifths: every perfect fifth in F major (E to B♭ isn't one).
+  const FIFTHS = [53, 55, 57, 58, 60, 62].map((m) => [m, m + 7]);
+  // The boss's triads and arpeggios: I, ii, IV, V and vi of F.
+  const TRIADS = [[53, 57, 60], [55, 58, 62], [58, 62, 65], [60, 64, 67], [62, 65, 69]];
+  const FIFTH_SPEED = 1.4;   // fifths fly faster than single notes, like your power shot
+  const TRIAD_SPREAD = 0.24; // radians between the three notes of a triad volley
+  const ARP = { notes: 6, gap: 0.12, fan: 1.0, warn: 0.7 }; // an arpeggio sprayed across the floor
+  const PHASES = [
+    { from: 100, speed: 280, warn: 0.7, gap: 1.4, fifths: 0.3, triads: 0.2, labels: true, lead: 0, drift: 100, laserGap: 0, sweep: 2.2, reverse: 0, red: 0, ground: 0, arp: 0, name: 'Phase 1' },
+    { from: 66, speed: 320, warn: 0.65, gap: 1.4, fifths: 0.35, triads: 0.2, labels: false, lead: 0.25, drift: 125, laserGap: 8, sweep: 2.0, reverse: 0.4, red: 0, ground: 6.5, arp: 0, name: 'Phase 2: lasers and power-chord bombs' },
+    { from: 33, speed: 350, warn: 0.6, gap: 1.3, fifths: 0.35, triads: 0.25, labels: false, lead: 0.4, drift: 145, laserGap: 9, sweep: 1.9, reverse: 0.3, red: 0.5, ground: 8, arp: 6, name: 'Phase 3: full circle' },
+  ];
+  const ALL = [ROOT_PC, THIRD_PC, FIFTH_PC, FOURTH_PC];
+  const UNLOCKS = [ALL, ALL, ALL];
+  const CHORD_WINDOW = 0.09;
+  const SHOT_GAP = 0.25;
+  const ATTACKS = {
+    single: { cost: 7, damage: 1.5, speed: 560, refund: 7 },
+    power: { cost: 16, damage: 5, speed: 820, refund: 8 },
+    triad: { cost: 24, damage: 3, speed: 600, refund: 8 },
+  };
+  const SUS4 = { cost: 33, cooldown: 6, radius: 150 }; // tune after testing
+  const LASER_WARN = 1.2;      // seconds of warning line before a sweep
+  const LASER_WIDTH = 16;      // how close counts as touching the beam
+  const RESOLVE_DAMAGE = 4;    // resolving a laser reflects this
+  const CANCEL_DAMAGE = 3;
+  const HEARTS = 3;
+  const TRANSITION = 3;
+  const CLIP_STUN = 2, CLIP_RESET = 70;
+  const NOTE_SPEED = 1.25;
+  const BOSS_SIZE = 0.72, BOSS_HEALTH = 2.1;
+  const MUZZLE = 40 * BOSS_SIZE;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  let canvas, ctx, ui = {};
+  let S = null;
+  let keys = {};
+  let last = 0, paused = false;
+  const nameOf = (midi) => {
+    const i = SCALE.findIndex((m) => m % 12 === midi % 12);
+    return i >= 0 ? (S && S.flipped ? FLAT_NAMES : SHARP_NAMES)[i] : Piano.noteName(midi);
+  };
+
+  Level.setup({
+    description: 'The last key. Everything you’ve faced comes back at once.',
+    start(stage) {
+      stage.innerHTML = `
+        <div class="arena">
+          <canvas id="arena" width="${W}" height="${H}"></canvas>
+          <div class="overlay show" id="howTo">
+            <h2>The Circle</h2>
+            <div class="how">
+              <span><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></span><span>Move and dash (dash through lasers)</span>
+              <span><kbd>A</kbd> <kbd>D</kbd> <kbd>G</kbd></span><span>F major: single notes, A + G power shot, A + D + G triad</span>
+              <span><kbd>A</kbd> + <kbd>D</kbd></span><span>Resolve a violet laser while it charges or sweeps</span>
+              <span><kbd>A</kbd> + <kbd>F</kbd> + <kbd>G</kbd></span><span>Sus4: a shockwave that clears notes and ground waves near you</span>
+              <span>Hearts and volume</span><span>Hits take hearts; spamming makes you clip</span>
+            </div>
+            <div class="buttons"><button class="primary" id="fightBtn">Fight</button></div>
+          </div>
+          <div class="overlay" id="endCard">
+            <h2 id="endTitle"></h2>
+            <p id="endText"></p>
+            <div class="buttons" id="endButtons"></div>
+            <p class="hint" id="endHint" hidden></p>
+          </div>
+        </div>`;
+      canvas = stage.querySelector('#arena');
+      ctx = canvas.getContext('2d');
+      ui = {
+        howTo: stage.querySelector('#howTo'), end: stage.querySelector('#endCard'),
+        endTitle: stage.querySelector('#endTitle'), endText: stage.querySelector('#endText'),
+        endButtons: stage.querySelector('#endButtons'), endHint: stage.querySelector('#endHint'),
+      };
+      Level.piano.useScale(ROOT);
+      Level.piano.setNames(SHARP_NAMES);
+      Level.piano.setAllowed(UNLOCKS[0]);
+      stage.querySelector('#fightBtn').onclick = (e) => { e.currentTarget.blur(); ui.howTo.classList.remove('show'); begin(); };
+      newState();
+      requestAnimationFrame(loop);
+    },
+  });
+
+  // ---------- State ----------
+  function newState() {
+    const hearts = HEARTS + Level.extraHearts;
+    S = {
+      phase: 0, running: false, over: false, time: 0, flipped: false,
+      boss: { x: W / 2, y: 82, hp: 100, target: W / 2, stun: 0, flash: 0, warn: 0 },
+      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
+      meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, sus4Cool: 0,
+      hearts, maxHearts: hearts, hurtFlash: 0, heartPop: 0,
+      unlocked: new Set(UNLOCKS[0]),
+      shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
+      attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true,
+      arps: [], finale: false,
+      banner: null,
+    };
+    window.__boss = S; // for automatic tests
+  }
+
+  function begin() {
+    newState();
+    S.running = true;
+    ui.end.classList.remove('show');
+    Level.piano.setNames(SHARP_NAMES);
+    Level.piano.setEnabled(true);
+    Level.piano.setAllowed([...S.unlocked]);
+  }
+
+  // ---------- Input ----------
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'Space') {
+      e.preventDefault();
+      keys[e.code] = true;
+      if (e.code === 'Space' && !e.repeat) dash();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+    if (e.code === 'Space') e.preventDefault();
+  });
+  window.addEventListener('blur', () => { paused = true; keys = {}; });
+  window.addEventListener('focus', () => { paused = false; last = performance.now(); });
+
+  function dash() {
+    const p = S && S.player;
+    if (!p || !S.running || p.dashCool > 0 || p.stun > 0) return;
+    p.dash = 0.18;
+    p.dashCool = 0.9;
+    p.safe = Math.max(p.safe, 0.3); // the untouchable moment that lets you cross a laser
+    p.dashDir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) || p.dir || 1;
+    Sound.whoosh();
+  }
+
+  Level.piano.onNoteOn((midi) => {
+    if (!S || !S.running || S.player.stun > 0) return;
+    const pc = midi % 12;
+    if (!S.unlocked.has(pc)) return;
+    if (!S.pending) S.pending = { notes: new Map(), t: CHORD_WINDOW };
+    S.pending.notes.set(pc, midi);
+  });
+
+  function release(notes) {
+    const has = (pc) => notes.has(pc);
+    const p = S.player;
+    if (S.finale) {
+      if (has(ROOT_PC) && has(THIRD_PC) && has(FIFTH_PC)) return win();
+      return playerText('Play F major: A + D + G', 1.4);
+    }
+    // Resolving a violet laser: F + A together (no C).
+    if (has(ROOT_PC) && has(THIRD_PC) && !has(FIFTH_PC) && S.lasers.some((l) => l.cancellable)) return resolveLasers();
+    // Sus4: F + B♭ + C.
+    if (S.unlocked.has(FOURTH_PC) && has(ROOT_PC) && has(FOURTH_PC) && has(FIFTH_PC)) return sus4();
+    if (S.shotGap > 0) return;
+    let kind = 'single';
+    if (has(ROOT_PC) && has(THIRD_PC) && has(FIFTH_PC)) kind = 'triad';
+    else if (has(ROOT_PC) && has(FIFTH_PC)) kind = 'power';
+    const a = ATTACKS[kind];
+    const shot = (midi, angle, extra = {}) => S.shots.push({
+      x: p.x, y: p.y - 22, vx: Math.sin(angle) * a.speed, vy: -Math.cos(angle) * a.speed,
+      midi, pcs: [midi % 12], kind, damage: a.damage, refund: a.refund, ...extra,
+    });
+    let cost = a.cost;
+    if (kind === 'power') shot(notes.get(ROOT_PC), 0, { pcs: [ROOT_PC, FIFTH_PC], label: `${nameOf(ROOT)}+${nameOf(ROOT + 7)}` });
+    else if (kind === 'triad') [[ROOT_PC, -0.2], [THIRD_PC, 0], [FIFTH_PC, 0.2]].forEach(([pc, angle]) => shot(notes.get(pc), angle));
+    else { cost = a.cost * notes.size; notes.forEach((midi) => shot(midi, 0)); }
+    S.shotGap = SHOT_GAP;
+    addVolume(cost);
+  }
+
+  function addVolume(amount) {
+    S.meter = Math.min(100, S.meter + amount);
+    if (S.meter >= 60 && !S.warnedClip) { S.warnedClip = true; playerText('Too much noise! Slow down.', 1.6); }
+    if (S.meter >= 100) clip();
+  }
+
+  // Sus4 shockwave: clears every note and ground wave within reach. Not lasers.
+  function sus4() {
+    if (S.sus4Cool > 0) return playerText('Sus4 is recharging.', 1);
+    const p = S.player;
+    S.sus4Cool = SUS4.cooldown;
+    S.rings.push({ x: p.x, y: p.y - 8, r: 10, t: 0.4 });
+    let cleared = 0;
+    for (const n of S.notes) if (Math.hypot(n.x - p.x, n.y - p.y) < SUS4.radius) { n.gone = true; cleared++; spark(n.x, n.y, '#E2D9FF'); }
+    for (const w of S.waves) if (Math.abs(w.x - p.x) < SUS4.radius) { w.gone = true; cleared++; }
+    Sound.chord([ROOT, ROOT + 5, ROOT + 7], 0, 0.9, 0.5);
+    Sound.whoosh();
+    playerText(cleared ? `Sus4! Cleared ${cleared}` : 'Sus4!', 1.1);
+    addVolume(SUS4.cost);
+  }
+
+  // ---------- Boss attacks ----------
+  function aimX() {
+    const p = S.player, ph = PHASES[S.phase];
+    return Math.min(W - 20, Math.max(20, p.x + p.dir * 300 * ph.lead));
+  }
+  const mirror = () => (S.flipped ? -1 : 1); // after the flip, patterns run the other way
+
+  function attack() {
+    const ph = PHASES[S.phase];
+    const tx = aimX();
+    const r = Math.random();
+    if (r < ph.triads) S.warnings.push({ t: ph.warn + 0.15, total: ph.warn + 0.15, tx, kind: 'triad', notes: pick(TRIADS) });
+    else if (r < ph.triads + ph.fifths) S.warnings.push({ t: ph.warn + 0.1, total: ph.warn + 0.1, tx, kind: 'fifth', notes: pick(FIFTHS) });
+    else S.warnings.push({ t: ph.warn, total: ph.warn, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
+  }
+
+  function fire(w) {
+    const ph = PHASES[S.phase];
+    const ox = S.boss.x, oy = S.boss.y + MUZZLE;
+    const base = Math.atan2(S.player.y - oy, w.tx - ox);
+    const launch = (notes, kind, speed, angle = base) => S.notes.push({
+      x: ox, y: oy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      midi: notes[0], pcs: notes.map((m) => m % 12), notes, kind, label: ph.labels,
+    });
+    if (w.kind === 'triad') {
+      // Three single notes fanned out, like your own triad shot.
+      w.notes.forEach((m, i) => launch([m], 'note', ph.speed * NOTE_SPEED * 0.9, base + (i - 1) * TRIAD_SPREAD));
+      Sound.chord(w.notes, 0, 0.5, 0.45);
+      return;
+    }
+    if (w.kind === 'arp') return startArp(w);
+    if (w.kind === 'note') { launch([w.midi], 'note', ph.speed * NOTE_SPEED); Sound.note(w.midi, 0, 0.45, 0.4); return; }
+    // A perfect fifth: two notes as one bigger, faster shot.
+    launch(w.notes, 'fifth', ph.speed * FIFTH_SPEED);
+    Sound.chord(w.notes, 0, 0.5, 0.5);
+  }
+
+  // Arpeggios: the boss sprays a chord's notes one after another, fanning
+  // across the floor, up the chord and back down.
+  function warnArp() {
+    const chord = pick(TRIADS);
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const centre = Math.atan2(S.player.y - (S.boss.y + MUZZLE), S.player.x - S.boss.x);
+    S.warnings.push({ t: ARP.warn, total: ARP.warn, kind: 'arp', chord, dir, centre, tx: S.player.x });
+  }
+  function startArp(w) {
+    const up = [...w.chord, w.chord[0] + 12];
+    const run = [...up, ...up.slice(1, -1).reverse()].slice(0, ARP.notes);
+    run.forEach((midi, i) => S.arps.push({
+      t: i * ARP.gap, midi,
+      angle: w.centre + w.dir * ARP.fan * (i / (ARP.notes - 1) - 0.5),
+    }));
+  }
+  function arpNote(a) {
+    const ph = PHASES[S.phase];
+    const ox = S.boss.x, oy = S.boss.y + MUZZLE, speed = ph.speed * NOTE_SPEED * 0.85;
+    S.notes.push({ x: ox, y: oy, vx: Math.cos(a.angle) * speed, vy: Math.sin(a.angle) * speed, midi: a.midi, pcs: [a.midi % 12], notes: [a.midi], kind: 'arp', label: ph.labels });
+    Sound.note(a.midi + 12, 0, 0.3, 0.3);
+  }
+
+  // Lasers: a warning line, then a sweep from one angle to another.
+  function laserAngle(x) { return Math.atan2(S.player.y - (S.boss.y + MUZZLE), x - S.boss.x); }
+  function startLasers() {
+    const ph = PHASES[S.phase], p = S.player;
+    // e counts up from 0: the first LASER_WARN seconds are the preview, then
+    // the live beam carries on along the same path at the same speed.
+    const make = (fromX, toX, cancellable, reverse) => ({
+      stage: 'warn', e: 0, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
+      sound: [ROOT, ROOT + 6].map((m) => Sound.hold(m, cancellable ? 0.09 : 0.12)), // F + B: the tritone
+    });
+    if (Math.random() < PHASES[S.phase].red) {
+      // Red double lasers closing in from both sides: dash through one.
+      S.lasers.push(make(20, p.x + 30, false, false), make(W - 20, p.x - 30, false, false));
+    } else {
+      const dir = (Math.random() < 0.5 ? 1 : -1) * mirror();
+      const from = Math.min(W - 20, Math.max(20, p.x - dir * 280));
+      const to = Math.min(W - 20, Math.max(20, p.x + dir * 280));
+      S.lasers.push(make(from, to, true, Math.random() < ph.reverse));
+    }
+    if (S.firstLaser) {
+      S.firstLaser = false;
+      S.banner = { text: 'A tritone is charging. Resolve it with A + D, or dash through!', t: 2.8 };
+    }
+  }
+
+  function endLaser(l) {
+    l.gone = true;
+    l.sound.forEach((s) => s.stop());
+  }
+
+  function resolveLasers() {
+    const p = S.player;
+    for (const l of S.lasers) {
+      if (!l.cancellable || l.gone) continue;
+      endLaser(l);
+      const a = l.a ?? l.a0;
+      for (let i = 0; i < 14; i++) spark(S.boss.x + Math.cos(a) * i * 24, S.boss.y + MUZZLE + Math.sin(a) * i * 24, '#C8B8FF');
+      damage(RESOLVE_DAMAGE);
+    }
+    Sound.chord([ROOT + 4, ROOT + 12], 0, 1.2, 0.5); // A + F: resolved
+    playerText('Resolved!', 1.1);
+  }
+
+  // Power chords: the boss drops a bomb (marked on the floor) that bursts
+  // into two ground waves rolling out both ways. Dash through or sus4 them.
+  function startGround() {
+    const x = Math.min(W - 60, Math.max(60, aimX()));
+    S.warnings.push({ t: 1.1, total: 1.1, kind: 'ground', x, fromX: S.boss.x });
+    if (S.firstBomb) {
+      S.firstBomb = false;
+      S.banner = { text: 'Power-chord bomb! Dash through the waves, or sus4 them.', t: 2.6 };
+    }
+  }
+  function slam(w) {
+    S.waves.push({ x: w.x, dir: -1 }, { x: w.x, dir: 1 });
+    Sound.chord([ROOT - 12, ROOT - 5], 0, 0.7, 0.55);
+    Sound.hit();
+    S.shake = Math.max(S.shake, 0.25);
+  }
+
+  // ---------- Damage ----------
+  function damage(amount) {
+    const b = S.boss;
+    if (S.transition || S.finale) return;
+    b.hp = Math.max(0, b.hp - amount / BOSS_HEALTH);
+    b.flash = 0.15;
+    Sound.hit();
+    if (b.hp <= 0) return startFinale();
+    const next = PHASES.findIndex((ph, i) => i > S.phase && b.hp <= ph.from);
+    if (next > S.phase) startTransition(next);
+  }
+
+  // At zero health the boss stops attacking and waits for F major.
+  function startFinale() {
+    S.finale = true;
+    S.warnings = []; S.arps = []; S.waves = [];
+    S.lasers.forEach(endLaser);
+    for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#C8B8FF');
+    S.notes = [];
+    S.boss.stun = 999;
+    S.banner = { text: 'Finish it: play F major (A + D + G)', t: 999 };
+    Sound.chord([ROOT + 7, ROOT + 11, ROOT + 14, ROOT + 17], 0, 2.4, 0.35); // C7: waiting to resolve to F
+  }
+
+  function startTransition(next) {
+    S.phase = next;
+    S.transition = { t: TRANSITION, next };
+    S.warnings = [];
+    S.lasers.forEach(endLaser);
+    for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#8fc4ff');
+    S.notes = [];
+    S.waves = [];
+    S.arps = [];
+    S.banner = null;
+    Sound.chord([ROOT - 12, ROOT - 6], 0, TRANSITION, 0.25);
+  }
+
+  function endTransition() {
+    const next = S.transition.next;
+    S.transition = null;
+    S.banner = { text: PHASES[next].name, t: 3 };
+    UNLOCKS[next].forEach((pc) => S.unlocked.add(pc));
+    Level.piano.setAllowed([...S.unlocked]);
+    S.attackIn = 1;
+    S.laserIn = PHASES[next].laserGap ? 3 : 99;
+    S.groundIn = PHASES[next].ground ? 5 : 99;
+    S.arpIn = PHASES[next].arp ? 2.5 : 99;
+  }
+
+  function hurt() {
+    const p = S.player;
+    if (p.safe > 0) return;
+    if (p.shield > 0) { Sound.block(); spark(p.x, p.y - 10, '#E2D9FF'); return; }
+    S.hearts -= 1;
+    p.safe = 1.1;
+    S.shake = 0.4;
+    S.hurtFlash = 0.5;
+    S.heartPop = 0.6;
+    Sound.squeal();
+    for (let i = 0; i < 14; i++) spark(p.x, p.y - 8, '#ff5d7a');
+    if (S.hearts <= 0) lose();
+  }
+
+  function clip() {
+    const p = S.player;
+    p.stun = CLIP_STUN;
+    p.dash = 0;
+    S.meter = CLIP_RESET;
+    S.pending = null;
+    S.shake = 0.35;
+    S.banner = { text: 'You clipped!', t: 1.8, big: true };
+    Sound.squeal();
+    Level.piano.setEnabled(false);
+    setTimeout(() => { if (S && S.running && S.player === p) Level.piano.setEnabled(true); }, CLIP_STUN * 1000);
+  }
+
+  function playerText(text, t = 1.4) {
+    S.texts = S.texts.filter((x) => !x.player);
+    S.texts.push({ x: S.player.x, y: S.player.y - 46, text, t, player: true });
+  }
+
+  function spark(x, y, color) {
+    const a = rand(0, Math.PI * 2), v = rand(60, 220);
+    S.sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.3, 0.7), color });
+  }
+
+  // ---------- Endings ----------
+  function finish(title, text, buttons, hint) {
+    S.running = false;
+    S.lasers.forEach(endLaser);
+    Level.piano.setEnabled(false);
+    ui.endTitle.textContent = title;
+    ui.endText.textContent = text;
+    ui.endButtons.innerHTML = '';
+    buttons.forEach(([label, fn, primary]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      if (primary) b.className = 'primary';
+      b.onclick = fn;
+      ui.endButtons.append(b);
+    });
+    ui.endHint.hidden = !hint;
+    ui.endHint.textContent = hint || '';
+    ui.end.classList.add('show');
+  }
+
+  function lose() {
+    // Players who haven't found both hidden hearts get a nudge.
+    const hint = Level.extraHearts < 2 ? 'Hint: you can find extra hearts by exploring the levels.' : '';
+    finish('Out of hearts', 'The circle keeps turning. The fight starts again from the top.', [
+      ['Try again', () => begin(), true],
+    ], hint);
+  }
+
+  function win() {
+    S.over = true;
+    S.running = false;
+    S.lasers.forEach(endLaser);
+    S.notes = []; S.warnings = []; S.waves = [];
+    for (let i = 0; i < 40; i++) spark(S.boss.x, S.boss.y + 20, i % 2 ? '#C8B8FF' : '#9A7FE0');
+    S.finale = false;
+    S.banner = null;
+    // F major, then home to C: the circle closes (a plagal cadence, IV to I in C).
+    Sound.chord([41, 53, 57, 60, 65], 0.05, 1.3, 0.55);
+    Sound.chord([36, 48, 52, 55, 60, 64], 1.35, 3, 0.6);
+    setTimeout(() => finish('Full circle', 'F resolves home to C. Every key has been found.', []), 1500);
+    setTimeout(() => Level.win(), 3400);
+  }
+
+  // ---------- Game loop ----------
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - (last || now)) / 1000);
+    last = now;
+    if (S && S.running && !paused) update(dt);
+    if (S) draw();
+  }
+
+  function distanceToBeam(l, x, y) {
+    const ox = S.boss.x, oy = S.boss.y + MUZZLE;
+    const dx = Math.cos(l.a), dy = Math.sin(l.a);
+    const px = x - ox, py = y - oy;
+    if (px * dx + py * dy < 0) return Infinity;
+    return Math.abs(px * dy - py * dx);
+  }
+
+  function update(dt) {
+    const ph = PHASES[S.phase];
+    const b = S.boss, p = S.player;
+    S.time += dt;
+
+    p.stun = Math.max(0, p.stun - dt);
+    p.dir = p.stun > 0 ? 0 : (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
+    const speed = p.dash > 0 ? 1300 : 380;
+    const dir = p.dash > 0 ? p.dashDir : p.dir;
+    p.x = Math.min(W - 24, Math.max(24, p.x + dir * speed * dt));
+    p.dash = Math.max(0, p.dash - dt);
+    p.dashCool = Math.max(0, p.dashCool - dt);
+    p.safe = Math.max(0, p.safe - dt);
+    p.shield = Math.max(0, p.shield - dt);
+    S.sus4Cool = Math.max(0, S.sus4Cool - dt);
+
+    // The boss drifts; in phase 3 it follows you.
+    if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.5) b.target = rand(110, W - 110);
+    if (S.phase === 2) b.target = b.target * 0.98 + p.x * 0.02;
+    const holding = S.lasers.length > 0 || S.arps.length > 0; // it holds still while a laser sweeps or an arpeggio fires
+    if (b.stun <= 0 && !holding) b.x += Math.sign(b.target - b.x) * Math.min(Math.abs(b.target - b.x), ph.drift * dt);
+    b.stun = Math.max(0, b.stun - dt);
+    b.flash = Math.max(0, b.flash - dt);
+
+    if (S.transition) {
+      S.transition.t -= dt;
+      if (S.transition.t <= 0) endTransition();
+    }
+    if (!S.transition && !S.finale) {
+      S.attackIn -= dt * (holding ? 0.4 : 1);
+      if (S.attackIn <= 0) { attack(); S.attackIn = ph.gap * rand(0.85, 1.15); }
+      S.laserIn -= dt;
+      if (S.laserIn <= 0 && !holding) { startLasers(); S.laserIn = ph.laserGap * rand(0.85, 1.15); }
+      S.groundIn -= dt;
+      if (S.groundIn <= 0 && !holding) { startGround(); S.groundIn = ph.ground * rand(0.85, 1.15); }
+      S.arpIn -= dt;
+      if (S.arpIn <= 0 && !holding) { warnArp(); S.arpIn = ph.arp * rand(0.85, 1.15); }
+    }
+    // Arpeggio notes leave the boss one by one.
+    S.arps.forEach((a) => { a.t -= dt; });
+    S.arps.filter((a) => a.t <= 0).forEach(arpNote);
+    S.arps = S.arps.filter((a) => a.t > 0);
+    S.pickupIn -= dt;
+    if (S.pickupIn <= 0) { S.pickups.push({ x: rand(60, W - 60), y: -20 }); S.pickupIn = rand(12, 16); }
+
+    // Chords pressed together fire together.
+    S.shotGap = Math.max(0, S.shotGap - dt);
+    if (S.pending) {
+      S.pending.t -= dt;
+      if (S.pending.t <= 0) { const notes = S.pending.notes; S.pending = null; release(notes); if (!S.running) return; }
+    }
+
+    // Warnings, then attacks
+    S.warnings.forEach((w) => { w.t -= dt; });
+    S.warnings.filter((w) => w.t <= 0).forEach((w) => (w.kind === 'ground' ? slam(w) : fire(w)));
+    S.warnings = S.warnings.filter((w) => w.t > 0);
+    b.warn = S.warnings.some((w) => w.kind !== 'ground') || S.lasers.length ? 1 - Math.min(...S.warnings.map((w) => w.t / w.total), 1) : 0;
+
+    // Lasers: one continuous movement. It starts as a faint preview line,
+    // already moving, then turns live and carries on from that point at the
+    // same speed. k < 0 is the preview, 0 to 1 the live sweep (a0 to a1).
+    for (const l of S.lasers) {
+      l.e += dt;
+      const k = (l.e - LASER_WARN) / l.dur;
+      const along = l.reverse ? (k < 0.5 ? k * 2 : (1 - k) * 2) : k; // some sweeps turn back halfway
+      l.a = l.a0 + (l.a1 - l.a0) * along;
+      l.stage = k < 0 ? 'warn' : 'sweep';
+      if (k >= 1) { endLaser(l); continue; }
+      if (l.stage === 'warn') continue;
+      if (distanceToBeam(l, p.x, p.y - 6) < LASER_WIDTH) { hurt(); if (!S.running) return; }
+    }
+    S.lasers = S.lasers.filter((l) => !l.gone);
+
+    // Ground waves roll along the floor
+    for (const w of S.waves) {
+      w.x += w.dir * 300 * dt;
+      if (!w.gone && Math.abs(w.x - p.x) < 16) { w.gone = true; hurt(); if (!S.running) return; }
+    }
+    S.waves = S.waves.filter((w) => !w.gone && w.x > -20 && w.x < W + 20);
+
+    S.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
+    S.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });
+    S.pickups.forEach((k) => { k.y += 70 * dt; });
+    S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+    S.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
+    S.rings.forEach((r) => { r.t -= dt; r.r += (SUS4.radius / 0.4) * dt; });
+    S.meter = Math.max(0, S.meter - 6 * dt);
+    S.shake = Math.max(0, S.shake - dt);
+    S.hurtFlash = Math.max(0, S.hurtFlash - dt);
+    S.heartPop = Math.max(0, S.heartPop - dt);
+    if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
+
+    for (const s of S.shots) {
+      for (const n of S.notes) {
+        const hitSize = (s.kind === 'power' ? 34 : 26) + (n.kind === 'fifth' ? 6 : 0);
+        if (!n.gone && !s.gone && (n.pcs || [n.pc]).some((pc) => s.pcs.includes(pc)) && Math.hypot(n.x - s.x, n.y - s.y) < hitSize) {
+          n.gone = s.gone = true;
+          for (let i = 0; i < 8; i++) spark(n.x, n.y, '#C8B8FF');
+          Sound.note(n.midi + 12, 0, 0.25, 0.18);
+          S.meter = Math.max(0, S.meter - s.refund);
+          damage(CANCEL_DAMAGE);
+          if (!S.running) return;
+        }
+      }
+      if (!s.gone && Math.abs(s.x - b.x) < 70 * BOSS_SIZE && s.y < b.y + 50 * BOSS_SIZE && s.y > b.y - 50 * BOSS_SIZE) {
+        s.gone = true;
+        damage(s.damage);
+        spark(s.x, b.y + 30, '#9A7FE0');
+        if (!S.running) return;
+      }
+    }
+
+    for (const n of S.notes) {
+      if (!n.gone && Math.hypot(n.x - p.x, n.y - (p.y - 6)) < (n.kind === 'fifth' ? 26 : 22)) { n.gone = true; hurt(); if (!S.running) return; }
+    }
+    for (const k of S.pickups) {
+      if (!k.gone && Math.abs(k.x - p.x) < 30 && Math.abs(k.y - p.y) < 30) {
+        k.gone = true;
+        p.shield = 5;
+        Sound.note(ROOT + 24, 0, 0.6, 0.25);
+        playerText('Ear defenders!', 1.2);
+      }
+    }
+
+    S.notes = S.notes.filter((n) => !n.gone && n.y < H + 20 && n.x > -20 && n.x < W + 20);
+    S.shots = S.shots.filter((s) => !s.gone && s.y > -20 && s.x > -20 && s.x < W + 20);
+    S.pickups = S.pickups.filter((k) => !k.gone && k.y < H + 20);
+    S.sparks = S.sparks.filter((s) => s.t > 0);
+    S.texts = S.texts.filter((t) => t.t > 0);
+    S.rings = S.rings.filter((r) => r.t > 0);
+  }
+
+  // ---------- Drawing ----------
+  function draw() {
+    const b = S.boss, p = S.player;
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    if (S.shake > 0) ctx.translate(rand(-4, 4) * S.shake * 3, rand(-3, 3) * S.shake * 3);
+
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, ['#16141c', '#1a1420', '#201318'][S.phase]); bg.addColorStop(1, '#0f0e13');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = ['rgba(94, 62, 132, 0.18)', 'rgba(154, 127, 224, 0.16)', 'rgba(255, 93, 122, 0.14)'][S.phase]; ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) { ctx.beginPath(); ctx.moveTo(W / 2 + (i - 4.5) * 40, H * 0.55); ctx.lineTo(W / 2 + (i - 4.5) * 150, H); ctx.stroke(); }
+
+    // Note and chord warnings (dashed aim lines) and floor warnings
+    for (const w of S.warnings) {
+      const k = 1 - w.t / w.total;
+      if (w.kind === 'ground') {
+        ctx.fillStyle = `rgba(255, 93, 122, ${0.15 + 0.35 * k})`;
+        ctx.fillRect(w.x - 40, H - 14, 80, 6);
+        // The bomb falling from the boss to its mark
+        const bx = b.x + (w.x - b.x) * k, by = b.y + MUZZLE + (H - 18 - b.y - MUZZLE) * k * k;
+        ctx.fillStyle = '#ff5d7a'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#181818'; ctx.font = '600 9px Oswald, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('F+C', bx, by + 3);
+        continue;
+      }
+      if (w.kind === 'arp') {
+        // A faint fan showing where the arpeggio will spray
+        ctx.strokeStyle = `rgba(217, 194, 122, ${0.12 + k * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 10]);
+        const ox = b.x, oy = b.y + MUZZLE;
+        for (let i = 0; i < ARP.notes; i++) {
+          const a = w.centre + w.dir * ARP.fan * (i / (ARP.notes - 1) - 0.5);
+          ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(a) * 380, oy + Math.sin(a) * 380); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        continue;
+      }
+      ctx.setLineDash([6, 8]);
+      ctx.strokeStyle = `rgba(200, 184, 255, ${0.15 + k * 0.45})`;
+      ctx.lineWidth = 2;
+      const ox = b.x, oy = b.y + MUZZLE;
+      const base = Math.atan2(p.y - oy, w.tx - ox);
+      if (w.kind === 'fifth') ctx.lineWidth = 4;
+      for (const off of w.kind === 'triad' ? [-TRIAD_SPREAD, 0, TRIAD_SPREAD] : [0]) {
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(base + off) * 420, oy + Math.sin(base + off) * 420); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    // Lasers: a semi-transparent line while warning, then the beam
+    for (const l of S.lasers) {
+      const ox = b.x, oy = b.y + MUZZLE;
+      const a = l.a ?? l.a0;
+      const ex = ox + Math.cos(a) * 900, ey = oy + Math.sin(a) * 900;
+      const color = l.cancellable ? '200, 184, 255' : '255, 70, 100';
+      if (l.stage === 'warn') {
+        const k = Math.min(1, l.e / LASER_WARN);
+        ctx.strokeStyle = `rgba(${color}, ${0.15 + 0.25 * k})`;
+        ctx.lineWidth = 6 + 10 * k;
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+        continue;
+      }
+      ctx.shadowColor = `rgb(${color})`; ctx.shadowBlur = 24;
+      ctx.strokeStyle = `rgba(${color}, 0.55)`; ctx.lineWidth = 16;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    drawBoss(b);
+
+    for (const w of S.waves) {
+      ctx.fillStyle = 'rgba(255, 93, 122, 0.85)'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.moveTo(w.x - 12, H - 8); ctx.quadraticCurveTo(w.x, H - 46, w.x + 12, H - 8); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    for (const n of S.notes) {
+      const fifth = n.kind === 'fifth';
+      const color = n.kind === 'arp' ? '#d9c27a' : !fifth ? '#8fc4ff' : '#C8B8FF';
+      ctx.shadowColor = color; ctx.shadowBlur = fifth ? 22 : 14; ctx.fillStyle = color;
+      if (fifth) { roundRect(n.x - 22, n.y - 11, 44, 22, 11); ctx.fill(); } // a wide capsule, like your power shot
+      else { ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI * 2); ctx.fill(); }
+      ctx.shadowBlur = 0;
+      if (n.label) {
+        ctx.fillStyle = '#181818'; ctx.font = '600 10px Oswald, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText((n.notes || [n.midi]).map(nameOf).join('+'), n.x, n.y + 4);
+      }
+    }
+
+    for (const s of S.shots) {
+      const power = s.kind === 'power';
+      const color = power ? '#E2D9FF' : s.kind === 'triad' ? '#C8B8FF' : '#9A7FE0';
+      const w = power ? 50 : 24, h = power ? 24 : 18;
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = power ? 22 : 10;
+      roundRect(s.x - w / 2, s.y - h / 2, w, h, 6); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#181818'; ctx.font = `600 ${power ? 12 : 11}px Oswald, sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(s.label || nameOf(s.midi), s.x, s.y + 4);
+    }
+
+    for (const r of S.rings) {
+      ctx.strokeStyle = `rgba(226, 217, 255, ${r.t / 0.4})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    for (const k of S.pickups) drawHeadphones(k.x, k.y, 0.7, '#E2D9FF', true);
+    drawPlayer(p);
+
+    for (const s of S.sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.6); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
+    for (const t of S.texts) {
+      ctx.globalAlpha = Math.min(1, t.t * 2);
+      ctx.fillStyle = '#C8B8FF'; ctx.font = '600 16px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    drawDistortion();
+    drawHurt();
+    drawTransition();
+    drawHud();
+  }
+
+  // The Circle: all twelve keys orbiting a core, in circle-of-fifths order,
+  // spinning faster each phase. F, the key you're fighting for, glows.
+  const RING = ['C', 'G', 'D', 'A', 'E', 'B', 'F♯', 'D♭', 'A♭', 'E♭', 'B♭', 'F'];
+  function drawBoss(b) {
+    const glow = S.transition ? 0.6 + 0.4 * Math.sin(S.time * 14) : S.finale ? 0.3 : b.warn;
+    const main = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][S.phase];
+    const pale = '#E2D9FF';
+    ctx.save();
+    ctx.translate(b.x + (b.stun > 0 && !S.finale ? Math.sin(S.time * 30) * 3 : 0), b.y);
+    ctx.scale(BOSS_SIZE, BOSS_SIZE);
+    const spin = S.finale ? 0 : S.time * (0.5 + S.phase * 0.35);
+    // Orbit track
+    ctx.strokeStyle = `rgba(200, 184, 255, ${0.2 + glow * 0.4})`; ctx.lineWidth = 2;
+    ctx.setLineDash([3, 7]);
+    ctx.beginPath(); ctx.arc(0, 0, 74, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Core
+    ctx.fillStyle = b.flash > 0 ? pale : '#26232d';
+    ctx.strokeStyle = main; ctx.lineWidth = 4;
+    ctx.shadowColor = main; ctx.shadowBlur = 12 + glow * 30;
+    ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = main; ctx.font = '600 34px Oswald, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('F', 0, 12);
+    // The twelve keys
+    RING.forEach((label, i) => {
+      const a = spin + (i / 12) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(a) * 74, y = Math.sin(a) * 74;
+      const home = label === 'F';
+      ctx.fillStyle = home ? pale : '#1d1b22';
+      ctx.strokeStyle = home ? pale : main; ctx.lineWidth = 2;
+      ctx.shadowColor = main; ctx.shadowBlur = home ? 18 : 6;
+      ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = home ? '#181818' : pale; ctx.font = '600 13px Oswald, sans-serif';
+      ctx.fillText(label, x, y + 5);
+    });
+    if (b.stun > 0 && !S.finale) { ctx.fillStyle = pale; ctx.font = '600 16px Oswald, sans-serif'; ctx.fillText('STUNNED', 0, -98); }
+    ctx.restore();
+  }
+
+  function drawPlayer(p) {
+    const blink = p.safe > 0 && Math.floor(S.time * 20) % 2 === 0;
+    if (blink) return;
+    if (p.shield > 0) {
+      ctx.strokeStyle = `rgba(226, 217, 255, ${0.4 + 0.3 * Math.sin(S.time * 10)})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y - 6, 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    // Sus4 cooldown: a ring that fills back up
+    if (S.unlocked.has(FOURTH_PC)) {
+      const ready = S.sus4Cool <= 0;
+      ctx.strokeStyle = ready ? 'rgba(226, 217, 255, 0.7)' : 'rgba(154, 147, 163, 0.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y - 6, 36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - S.sus4Cool / SUS4.cooldown)); ctx.stroke();
+    }
+    drawHeadphones(p.x, p.y - 4, 1, p.stun > 0 ? '#5d5866' : p.shield > 0 ? '#E2D9FF' : '#9A7FE0', p.shield > 0);
+  }
+
+  function drawTransition() {
+    if (!S.transition) return;
+    const k = 1 - S.transition.t / TRANSITION;
+    ctx.globalAlpha = Math.min(1, (TRANSITION - S.transition.t) * 3, S.transition.t * 3);
+    ctx.fillStyle = 'rgba(12, 11, 16, 0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#E6E1EC'; ctx.font = '600 40px Oswald, sans-serif';
+    ctx.fillText(`PHASE ${S.transition.next + 1} COMMENCING`, W / 2, H / 2 - 8);
+    ctx.fillStyle = '#9A93A3'; ctx.font = '500 12px Oswald, sans-serif';
+    ctx.fillText('THE CIRCLE TURNS', W / 2, H / 2 + 22);
+    ctx.fillStyle = '#26232d'; roundRect(W / 2 - 160, H / 2 + 34, 320, 10, 5); ctx.fill();
+    const bar = ctx.createLinearGradient(W / 2 - 160, 0, W / 2 + 160, 0);
+    bar.addColorStop(0, '#5E3E84'); bar.addColorStop(1, '#ff5d7a');
+    ctx.fillStyle = bar; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 12;
+    roundRect(W / 2 - 160, H / 2 + 34, 320 * k, 10, 5); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHud() {
+    const b = S.boss;
+    ctx.textAlign = 'left'; ctx.font = '600 14px Oswald, sans-serif';
+    ctx.fillStyle = '#E6E1EC'; ctx.fillText('THE CIRCLE', 16, 24);
+    ctx.fillStyle = '#26232d'; roundRect(116, 13, 260, 12, 6); ctx.fill();
+    ctx.fillStyle = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][S.phase]; roundRect(116, 13, 260 * (b.hp / 100), 12, 6); ctx.fill();
+    ctx.textAlign = 'right'; ctx.fillStyle = '#E6E1EC';
+    ctx.fillText('VOLUME', W - 236, 24);
+    ctx.fillStyle = '#26232d'; roundRect(W - 216, 13, 200, 12, 6); ctx.fill();
+    const meter = ctx.createLinearGradient(W - 216, 0, W - 16, 0);
+    meter.addColorStop(0, '#9A7FE0'); meter.addColorStop(0.7, '#c46a7a'); meter.addColorStop(1, '#ff5d7a');
+    ctx.fillStyle = meter; roundRect(W - 216, 13, 200 * (S.meter / 100), 12, 6); ctx.fill();
+    if (S.player.shield > 0) {
+      ctx.fillStyle = '#E2D9FF'; ctx.font = '500 12px Oswald, sans-serif';
+      ctx.fillText(`EAR DEFENDERS ${Math.ceil(S.player.shield)}`, W - 16, 42);
+    }
+    for (let i = 0; i < S.maxHearts; i++) {
+      const lost = i === S.hearts && S.heartPop > 0;
+      drawHeart(28 + i * 30, H - 22, lost ? 22 + 14 * (S.heartPop / 0.6) : 22, i < S.hearts || (lost && Math.floor(S.time * 16) % 2 === 0));
+    }
+    const moves = [['A+G', true], ['A+D+G', true], ['A+D resolve', true], ['A+F+G sus4', S.unlocked.has(FOURTH_PC)]];
+    ctx.textAlign = 'right'; ctx.font = '600 12px Oswald, sans-serif';
+    let mx = W - 16;
+    for (const [label, on] of moves.reverse()) {
+      const text = on ? label : `${label} (locked)`;
+      ctx.fillStyle = on ? '#C8B8FF' : 'rgba(154, 147, 163, 0.35)';
+      ctx.fillText(text, mx, H - 14);
+      mx -= ctx.measureText(text).width + 16;
+    }
+    ctx.fillStyle = '#9A93A3'; ctx.fillText('MOVES', mx, H - 14);
+    if (S.banner && (S.running || S.finale)) {
+      ctx.globalAlpha = Math.min(1, S.banner.t * 1.5);
+      ctx.textAlign = 'center';
+      ctx.font = S.banner.big ? '600 44px Oswald, sans-serif' : '600 24px Oswald, sans-serif';
+      ctx.fillStyle = S.banner.big ? '#ff5d7a' : '#C8B8FF';
+      ctx.fillText(S.banner.text, W / 2, H / 2 + 48);
+      ctx.globalAlpha = 1;
+    }
+    if (paused && S.running) {
+      ctx.textAlign = 'center'; ctx.font = '600 20px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
+      ctx.fillText('Paused: click the game to carry on', W / 2, H / 2 + 90);
+    }
+  }
+
+  // ---------- Shared drawing helpers (same as Feedback) ----------
+  // Loudness you can see: past 40% the edges glitch and glow, stronger as the
+  // meter rises; while clipped, the whole screen breaks up.
+  function drawDistortion() {
+    const clipped = S.player.stun > 0;
+    // Rises quickly at first so it's noticeable early: 65% already shows clearly.
+    const level = clipped ? 1 : Math.pow(Math.max(0, (S.meter - 40) / 60), 0.6);
+    if (level <= 0) return;
+    const pulse = S.meter > 85 || clipped ? 0.75 + 0.25 * Math.sin(S.time * 18) : 1;
+
+    // Torn strips: copy slices of the picture back slightly out of place.
+    const strips = clipped ? 14 : Math.round(2 + level * 6);
+    for (let i = 0; i < strips; i++) {
+      const h = rand(3, clipped ? 26 : 10);
+      const y = clipped ? rand(0, H - h) : (Math.random() < 0.5 ? rand(0, 60 * level) : rand(H - 60 * level, H - h));
+      const dx = rand(-1, 1) * (clipped ? 36 : 14 * level);
+      ctx.drawImage(canvas, 0, y, W, h, dx, y, W, h);
+    }
+    if (!clipped) {
+      for (let i = 0; i < strips; i++) {
+        const w = rand(3, 8 + 24 * level), y = rand(0, H);
+        const x = Math.random() < 0.5 ? rand(0, 50 * level) : rand(W - 50 * level, W - w);
+        ctx.drawImage(canvas, x, y, w, 40, x + rand(-6, 6) * level, y + rand(-8, 8) * level, w, 40);
+      }
+    }
+
+    // Glow creeping in from the edges: violet static, turning pink just
+    // before you clip (red is kept for getting hit).
+    const hot = clipped ? 1 : Math.max(0, (level - 0.7) / 0.3);
+    const [r, g, bl] = [200 + 55 * hot, 184 - 64 * hot, 255 - 95 * hot].map(Math.round);
+    const edge = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.62);
+    edge.addColorStop(0, `rgba(${r}, ${g}, ${bl}, 0)`);
+    edge.addColorStop(1, `rgba(${r}, ${g}, ${bl}, ${0.7 * level * pulse})`);
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, W, H);
+
+    // Static lines
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.06 + 0.12 * level})`;
+    for (let i = 0; i < (clipped ? 40 : 6 + 18 * level); i++) {
+      const y = rand(0, H);
+      const near = clipped ? 1 : 0.18;
+      const x = Math.random() < 0.5 ? rand(0, W * near) : rand(W * (1 - near), W);
+      ctx.fillRect(x, y, rand(10, clipped ? 160 : 50), 1);
+    }
+    if (clipped) {
+      // Colour split across the whole screen
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.18;
+      ctx.drawImage(canvas, 6, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(255, 120, 160, ${0.1 * pulse})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // Getting hit: a red flash and a red rim.
+  function drawHurt() {
+    if (S.hurtFlash <= 0) return;
+    const k = S.hurtFlash / 0.5;
+    ctx.fillStyle = `rgba(255, 40, 70, ${0.28 * k})`;
+    ctx.fillRect(0, 0, W, H);
+    const rim = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.6);
+    rim.addColorStop(0, 'rgba(255, 40, 70, 0)');
+    rim.addColorStop(1, `rgba(255, 40, 70, ${0.7 * k})`);
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawHeart(x, y, size, full) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size / 20, size / 20);
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    ctx.bezierCurveTo(-10, -2, -10, -10, -5, -10);
+    ctx.bezierCurveTo(-2, -10, 0, -8, 0, -6);
+    ctx.bezierCurveTo(0, -8, 2, -10, 5, -10);
+    ctx.bezierCurveTo(10, -10, 10, -2, 0, 6);
+    ctx.closePath();
+    if (full) {
+      ctx.fillStyle = '#ff5d7a'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 8;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = 'rgba(255, 93, 122, 0.45)'; ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawHeadphones(x, y, scale, color, defenders) {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(scale, scale);
+    ctx.strokeStyle = color; ctx.lineWidth = defenders ? 7 : 5; ctx.lineCap = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0, 0, 18, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    ctx.fillStyle = color;
+    roundRect(-24, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    roundRect(12, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, Math.max(0, h), r) : ctx.rect(x, y, w, Math.max(0, h));
+  }
+</script>
+</body>
+</html>

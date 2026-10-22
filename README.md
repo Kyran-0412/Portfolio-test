@@ -26,10 +26,31 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `wix/embeds/level-aflat.html` | Level 9, Survival Waves (zombies) | Level A♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-eflat.html` | Level 10, Beat Rebuild | Level E♭ page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-bflat.html` | Level 11, Arpeggio Rush | Level B♭ page, Embed HTML box, ID `gameEmbed` |
+| `wix/embeds/level-f.html` | Level 12, the Final Boss (The Circle) | Level F page, Embed HTML box, ID `gameEmbed` |
 | `wix/embeds/level-placeholder.html` | Stand-in for unbuilt levels: working piano and a test win button | Other level pages, Embed HTML box, ID `gameEmbed` |
 | `assets/key-icon.svg` | The corner key icon | Upload as an image |
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
+
+## Level 12: the Final Boss (The Circle)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-f.html` | Level F page's Embed HTML box (replaces the placeholder) |
+
+The Circle: all twelve keys orbiting a core, and the source of every attack. You have every move from
+the start (F major in scale mode: A + G power shot, A + D + G triad, A + D resolves violet lasers,
+A + F + G sus4, Space to dash), with 3 hearts plus any hidden hearts found.
+
+- **Phase 1:** single notes, perfect fifths and fanned triad volleys.
+- **Phase 2:** adds violet tritone lasers and power-chord bombs that drop from the boss and split into
+  ground waves (dash through them or sus4 them).
+- **Phase 3:** adds arpeggio fans sprayed across the floor, and red lasers that can't be resolved.
+
+At zero health the boss stops and waits: play F major (A + D + G) to finish it, and F resolves home
+to C. Dying restarts the fight, with the hidden-hearts hint.
 
 ## Level 11: Arpeggio Rush (replaces Arpeggio Maze)
 
