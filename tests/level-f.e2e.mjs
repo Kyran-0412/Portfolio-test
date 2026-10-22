@@ -22,6 +22,13 @@ try {
     await page.waitForTimeout(150);
   };
   const calm = () => S(() => { const s = window.__boss; s.notes = []; s.warnings = []; s.shots = []; s.waves = []; s.arps = []; s.lasers.forEach((l) => l.sound.forEach((x) => x.stop())); s.lasers = []; s.attackIn = 99; s.laserIn = 99; s.groundIn = 99; s.arpIn = 99; s.pickupIn = 99; s.meter = 0; s.shotGap = 0; s.player.safe = 0; s.player.shield = 0; s.banner = null; });
+  // Breaks keys until the fight reaches stage n (0 = all keys, 11 = bare F core).
+  const toStage = async (n) => {
+    while (await S(() => window.__boss.phase) < n) {
+      await S(() => { const s = window.__boss; s.boss.hp = 100 - (s.phase + 1) * SEG + 0.05; damage(1); });
+      await finishTransition();
+    }
+  };
   const finishTransition = async () => {
     await frame.waitForFunction(() => window.__boss.transition !== null, null, { timeout: 2000 });
     await S(() => { window.__boss.transition.t = 0.01; });
@@ -37,15 +44,33 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-start.png` });
   console.log('✓ F major in scale mode, every move unlocked, hidden heart counted');
 
-  // Phase 1: notes, fifths and triad volleys; nothing else scheduled.
+  // Stage 1 (C): single notes only.
   await calm();
-  const kinds = await S(() => { const s = window.__boss; for (let i = 0; i < 80; i++) attack(); const k = [...new Set(s.warnings.map((w) => w.kind))].sort(); s.warnings = []; return k; });
-  assert.deepEqual(kinds, ['fifth', 'note', 'triad']);
+  const kindsAt = () => S(() => { const s = window.__boss; for (let i = 0; i < 80; i++) attack(); const k = [...new Set(s.warnings.map((w) => w.kind))].sort(); s.warnings = []; return k; });
+  assert.deepEqual(await kindsAt(), ['note']);
+  assert.equal(await S(() => window.__boss.laserIn > 50 && window.__boss.groundIn > 50 && window.__boss.arpIn > 50), true);
+
+  // Breaking C: one key per section, however big the hit.
+  await S(() => { const s = window.__boss; s.boss.hp = 100 - SEG + 0.05; damage(100); });
+  assert.equal(await S(() => window.__boss.phase), 1, 'one key at a time');
+  assert.ok(Math.abs(await S(() => window.__boss.boss.hp - (100 - SEG))) < 1e-6, 'health stops at the section line');
+  assert.equal(await S(() => window.__boss.transition.key), 'C');
+  await page.waitForTimeout(300);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-crack.png` });
+  await page.waitForTimeout(400);
+  assert.ok(await S(() => window.__boss.shards.length > 0), 'the key shatters');
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-shatter.png` });
+  await finishTransition();
+  await calm();
+  assert.deepEqual(await kindsAt(), ['fifth', 'note'], 'G adds fifths');
+  await toStage(2);
+  await calm();
+  assert.deepEqual(await kindsAt(), ['fifth', 'note', 'triad'], 'D adds triads');
   await S(() => { const s = window.__boss; fire({ kind: 'triad', notes: [53, 57, 60], tx: s.player.x }); });
   const triad = await S(() => window.__boss.notes.map((n) => Math.atan2(n.vy, n.vx)));
   assert.equal(triad.length, 3);
   assert.ok(triad[2] - triad[0] > 0.4, 'triad notes fan out');
-  console.log('✓ phase 1: notes, fifths and fanned triads');
+  console.log('✓ stages 1–3: notes, then fifths, then fanned triads; each key breaks with a shatter');
 
   // Sus4 works from the start and clears ground waves too.
   await calm();
@@ -54,12 +79,12 @@ try {
   assert.equal(await S(() => window.__boss.notes.length + window.__boss.waves.length), 0, 'sus4 cleared a note and a wave');
   console.log('✓ sus4 (A + F + G) clears notes and ground waves');
 
-  // Phase 2: violet lasers and power-chord bombs.
-  await calm();
-  await S(() => { window.__boss.boss.hp = 67; damage(3); });
-  await finishTransition();
+  // Lasers from E, bombs from F♯.
+  await toStage(4);
+  assert.ok(await S(() => window.__boss.laserIn < 10 && window.__boss.groundIn > 50), 'E adds lasers, no bombs yet');
+  await toStage(6);
   const timers = await S(() => ({ laser: window.__boss.laserIn, ground: window.__boss.groundIn, arp: window.__boss.arpIn }));
-  assert.ok(timers.laser < 10 && timers.ground < 10 && timers.arp > 50, `phase 2 timers ${JSON.stringify(timers)}`);
+  assert.ok(timers.laser < 10 && timers.ground < 10 && timers.arp > 50, `F♯ stage timers ${JSON.stringify(timers)}`);
   await calm();
   await S(() => startLasers());
   assert.equal(await S(() => window.__boss.lasers[0].cancellable), true, 'phase 2 lasers are violet');
@@ -73,7 +98,7 @@ try {
   await page.waitForTimeout(600);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-bomb.png` });
   await frame.waitForFunction(() => window.__boss.waves.length === 2, null, { timeout: 2000 });
-  console.log('✓ phase 2: violet lasers resolve with A + D; bombs drop from the boss and split into ground waves');
+  console.log('✓ E and F♯ stages: violet lasers resolve with A + D; bombs drop from the boss and split into ground waves');
 
   // A ground wave takes a heart unless you dash.
   await calm();
@@ -86,10 +111,9 @@ try {
   assert.equal(await S(() => window.__boss.hearts), h0 - 1, 'dashing through a wave is safe');
   console.log('✓ ground waves hurt, dashing through them is safe');
 
-  // Phase 3: arpeggio fans and red lasers.
-  await calm();
-  await S(() => { window.__boss.hearts = 4; window.__boss.boss.hp = 34; damage(3); });
-  await finishTransition();
+  // Arpeggio fans from A♭, red lasers from E♭.
+  await S(() => { window.__boss.hearts = 4; });
+  await toStage(8);
   assert.ok(await S(() => window.__boss.arpIn < 10), 'arpeggios scheduled');
   await calm();
   await S(() => warnArp());
@@ -102,10 +126,11 @@ try {
   const arp = await S(() => window.__boss.notes.filter((n) => n.kind === 'arp').map((n) => ({ a: Math.atan2(n.vy, n.vx), pc: n.midi % 12 })));
   assert.ok(Math.abs(arp.at(-1).a - arp[0].a) > 0.5, 'arpeggio fans across');
   assert.ok(new Set(arp.map((x) => x.pc)).size >= 3, 'arpeggio plays the chord tones');
+  await toStage(9);
   await calm();
   await S(() => { const s = window.__boss; for (let i = 0; i < 20; i++) { startLasers(); } s.reds = s.lasers.filter((l) => !l.cancellable).length; s.lasers.forEach((l) => l.sound.forEach((x) => x.stop())); s.lasers = []; });
   assert.ok(await S(() => window.__boss.reds > 0), 'phase 3 has red lasers');
-  console.log('✓ phase 3: arpeggio fans spray chord tones across the floor; red lasers join in');
+  console.log('✓ A♭ and E♭ stages: arpeggio fans spray chord tones across the floor; red lasers join in');
 
   // Losing restarts the fight, with the hint (only one hidden heart found).
   await calm();
@@ -117,8 +142,11 @@ try {
   assert.equal(await S(() => window.__boss.phase), 0);
   console.log('✓ out of hearts: hint shown, fight restarts');
 
-  // Zero health: the boss waits for F major. Other notes don't finish it.
+  // Down to the F core, then zero health: it waits for F major.
+  await toStage(11);
+  assert.match(await S(() => window.__boss.banner?.text || ''), /Only F is left/);
   await calm();
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-core.png` });
   await S(() => { const s = window.__boss; s.boss.hp = 0.5; damage(5); });
   assert.equal(await S(() => window.__boss.finale), true);
   assert.equal(await S(() => window.__boss.running), true);

@@ -44,10 +44,21 @@ The Circle: all twelve keys orbiting a core, and the source of every attack. You
 the start (F major in scale mode: A + G power shot, A + D + G triad, A + D resolves violet lasers,
 A + F + G sus4, Space to dash), with 3 hearts plus any hidden hearts found.
 
-- **Phase 1:** single notes, perfect fifths and fanned triad volleys.
-- **Phase 2:** adds violet tritone lasers and power-chord bombs that drop from the boss and split into
-  ground waves (dash through them or sus4 them).
-- **Phase 3:** adds arpeggio fans sprayed across the floor, and red lasers that can't be resolved.
+The fight is 12 short phases, one per key. The health bar is one bar split into 12 sections; emptying
+a section breaks off an orbiting key (C first, then G, D … B♭) with a crack-and-shatter animation and
+its own chord, and the boss adds something new:
+
+| Key broken | What comes next |
+| --- | --- |
+| (start) | Single notes |
+| C, G | Fifths, then fanned triads |
+| D, A | Faster, then violet tritone lasers (A + D resolves) |
+| E, B | Lasers that turn back, then power-chord bombs (they split into ground waves) |
+| F♯, D♭ | Faster bombs, then arpeggio fans |
+| A♭, E♭ | Red lasers that can't be resolved, then faster again |
+| B♭ | Only the F core is left, at top speed |
+
+The stage table (`STAGE_TABLE` in `src/embeds/level-f.html`) holds every number, one row per key.
 
 At zero health the boss stops and waits: play F major (A + D + G) to finish it, and F resolves home
 to C. Dying restarts the fight, with the hidden-hearts hint.

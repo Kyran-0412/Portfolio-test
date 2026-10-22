@@ -792,13 +792,32 @@ const Level = (() => {
   const FIFTH_SPEED = 1.4;   // fifths fly faster than single notes, like your power shot
   const TRIAD_SPREAD = 0.24; // radians between the three notes of a triad volley
   const ARP = { notes: 6, gap: 0.12, fan: 1.0, warn: 0.7 }; // an arpeggio sprayed across the floor
-  const PHASES = [
-    { from: 100, speed: 280, warn: 0.7, gap: 1.4, fifths: 0.3, triads: 0.2, labels: true, lead: 0, drift: 100, laserGap: 0, sweep: 2.2, reverse: 0, red: 0, ground: 0, arp: 0, name: 'Phase 1' },
-    { from: 66, speed: 320, warn: 0.65, gap: 1.4, fifths: 0.35, triads: 0.2, labels: false, lead: 0.25, drift: 125, laserGap: 8, sweep: 2.0, reverse: 0.4, red: 0, ground: 6.5, arp: 0, name: 'Phase 2: lasers and power-chord bombs' },
-    { from: 33, speed: 350, warn: 0.6, gap: 1.3, fifths: 0.35, triads: 0.25, labels: false, lead: 0.4, drift: 145, laserGap: 9, sweep: 1.9, reverse: 0.3, red: 0.5, ground: 8, arp: 6, name: 'Phase 3: full circle' },
+  // Twelve short phases, one per key. The orbiting keys break in circle
+  // order (C first, B♭ last), then the bare F core. Each one adds a little.
+  // Columns: speed, warn, gap, fifths, triads, labels, lead, drift,
+  //          laserGap, sweep, reverse, red, ground, arp, and what's new.
+  const STAGE_TABLE = [
+    [260, 0.75, 1.5,  0,    0,    1, 0,    90,  0,   2.1,  0,    0,   0,   0,   ''],
+    [270, 0.72, 1.45, 0.35, 0,    1, 0,    95,  0,   2.1,  0,    0,   0,   0,   'Now it fires fifths'],
+    [280, 0.7,  1.4,  0.3,  0.25, 1, 0.1,  100, 0,   2.1,  0,    0,   0,   0,   'Now it fires triads'],
+    [300, 0.66, 1.25, 0.3,  0.25, 0, 0.15, 110, 0,   2.1,  0,    0,   0,   0,   'Faster'],
+    [300, 0.66, 1.35, 0.3,  0.2,  0, 0.2,  115, 8,   2.1,  0,    0,   0,   0,   'Tritone lasers: resolve with A + D, or dash'],
+    [310, 0.64, 1.3,  0.3,  0.2,  0, 0.25, 120, 7.5, 2.0,  0.45, 0,   0,   0,   'Lasers can turn back'],
+    [315, 0.62, 1.35, 0.3,  0.2,  0, 0.25, 125, 8.5, 2.0,  0.4,  0,   6.5, 0,   'Power-chord bombs'],
+    [325, 0.6,  1.3,  0.3,  0.2,  0, 0.3,  130, 8.5, 1.95, 0.4,  0,   5,   0,   'Faster bombs'],
+    [330, 0.6,  1.35, 0.3,  0.2,  0, 0.3,  135, 9,   1.9,  0.35, 0,   6.5, 6.5, 'Arpeggio fans'],
+    [340, 0.58, 1.3,  0.3,  0.25, 0, 0.35, 140, 8.5, 1.9,  0.3,  0.5, 7,   6,   'Red lasers: these can’t be resolved'],
+    [355, 0.56, 1.2,  0.35, 0.25, 0, 0.4,  150, 8,   1.85, 0.3,  0.5, 6.5, 5.5, 'Faster'],
+    [370, 0.54, 1.1,  0.35, 0.25, 0, 0.45, 160, 7.5, 1.8,  0.3,  0.6, 6,   5,   'Only F is left'],
   ];
+  const PHASES = STAGE_TABLE.map(([speed, warn, gap, fifths, triads, labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name]) =>
+    ({ speed, warn, gap, fifths, triads, labels: !!labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name }));
+  const SEG = 100 / PHASES.length;      // health in each key's section of the bar
+  const BREAK = 1.4;                     // the pause while a key shatters
+  // The colour tier: purple, lilac, then pink for the last few keys.
+  const tier = () => (S.phase < 4 ? 0 : S.phase < 8 ? 1 : 2);
   const ALL = [ROOT_PC, THIRD_PC, FIFTH_PC, FOURTH_PC];
-  const UNLOCKS = [ALL, ALL, ALL];
+  const UNLOCKS = PHASES.map(() => ALL);
   const CHORD_WINDOW = 0.09;
   const SHOT_GAP = 0.25;
   const ATTACKS = {
@@ -881,7 +900,7 @@ const Level = (() => {
       unlocked: new Set(UNLOCKS[0]),
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
       attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true,
-      arps: [], finale: false,
+      arps: [], finale: false, shards: [],
       banner: null,
     };
     window.__boss = S; // for automatic tests
@@ -1106,8 +1125,12 @@ const Level = (() => {
     b.flash = 0.15;
     Sound.hit();
     if (b.hp <= 0) return startFinale();
-    const next = PHASES.findIndex((ph, i) => i > S.phase && b.hp <= ph.from);
-    if (next > S.phase) startTransition(next);
+    // Crossing into the next key's section breaks the current key.
+    const boundary = 100 - (S.phase + 1) * SEG;
+    if (S.phase < PHASES.length - 1 && b.hp <= boundary + 1e-9) {
+      b.hp = boundary;
+      startTransition(S.phase + 1);
+    }
   }
 
   // At zero health the boss stops attacking and waits for F major.
@@ -1122,9 +1145,11 @@ const Level = (() => {
     Sound.chord([ROOT + 7, ROOT + 11, ROOT + 14, ROOT + 17], 0, 2.4, 0.35); // C7: waiting to resolve to F
   }
 
+  // A key breaks off: it swells, cracks and shatters, sounding its own chord.
   function startTransition(next) {
+    const key = KEYS[next - 1];
     S.phase = next;
-    S.transition = { t: TRANSITION, next };
+    S.transition = { t: BREAK, next, key, index: next - 1, burst: false };
     S.warnings = [];
     S.lasers.forEach(endLaser);
     for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#8fc4ff');
@@ -1132,19 +1157,39 @@ const Level = (() => {
     S.waves = [];
     S.arps = [];
     S.banner = null;
-    Sound.chord([ROOT - 12, ROOT - 6], 0, TRANSITION, 0.25);
+    const r = rootMidi(key);
+    Sound.chord([r, r + 4, r + 7, r + 12], 0, 0.9, 0.45);
+  }
+
+  function keyPos(i) {
+    const a = ringSpin() + (i / 12) * Math.PI * 2 - Math.PI / 2;
+    return { x: S.boss.x + Math.cos(a) * 74 * BOSS_SIZE, y: S.boss.y + Math.sin(a) * 74 * BOSS_SIZE, a };
+  }
+  function burstKey(i) {
+    S.transition.burst = true;
+    const { x, y } = keyPos(i);
+    for (let k = 0; k < 14; k++) {
+      const a = rand(0, Math.PI * 2), v = rand(120, 320);
+      S.shards.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, rot: rand(0, 6), vr: rand(-12, 12), size: rand(5, 11), t: rand(0.7, 1.2) });
+    }
+    for (let k = 0; k < 24; k++) spark(x, y, k % 2 ? '#E2D9FF' : ['#9A7FE0', '#C8B8FF', '#ff8fa6'][tier()]);
+    S.shake = Math.max(S.shake, 0.35);
+    Sound.hit();
+    Sound.block();
   }
 
   function endTransition() {
     const next = S.transition.next;
     S.transition = null;
-    S.banner = { text: PHASES[next].name, t: 3 };
+    if (PHASES[next].name) S.banner = { text: PHASES[next].name, t: 2.4 };
     UNLOCKS[next].forEach((pc) => S.unlocked.add(pc));
     Level.piano.setAllowed([...S.unlocked]);
     S.attackIn = 1;
-    S.laserIn = PHASES[next].laserGap ? 3 : 99;
-    S.groundIn = PHASES[next].ground ? 5 : 99;
-    S.arpIn = PHASES[next].arp ? 2.5 : 99;
+    // New attacks start soon; ones already running keep their rhythm.
+    const soon = (gap, timer, first) => (!gap ? 99 : timer > 50 ? first : Math.min(timer, gap));
+    S.laserIn = soon(PHASES[next].laserGap, S.laserIn, 2.5);
+    S.groundIn = soon(PHASES[next].ground, S.groundIn, 3);
+    S.arpIn = soon(PHASES[next].arp, S.arpIn, 2);
   }
 
   function hurt() {
@@ -1262,7 +1307,7 @@ const Level = (() => {
 
     // The boss drifts; in phase 3 it follows you.
     if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.5) b.target = rand(110, W - 110);
-    if (S.phase === 2) b.target = b.target * 0.98 + p.x * 0.02;
+    if (S.phase >= 9) b.target = b.target * 0.98 + p.x * 0.02;
     const holding = S.lasers.length > 0 || S.arps.length > 0; // it holds still while a laser sweeps or an arpeggio fires
     if (b.stun <= 0 && !holding) b.x += Math.sign(b.target - b.x) * Math.min(Math.abs(b.target - b.x), ph.drift * dt);
     b.stun = Math.max(0, b.stun - dt);
@@ -1270,6 +1315,7 @@ const Level = (() => {
 
     if (S.transition) {
       S.transition.t -= dt;
+      if (!S.transition.burst && S.transition.t <= BREAK - 0.55) burstKey(S.transition.index);
       if (S.transition.t <= 0) endTransition();
     }
     if (!S.transition && !S.finale) {
@@ -1328,6 +1374,7 @@ const Level = (() => {
     S.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });
     S.pickups.forEach((k) => { k.y += 70 * dt; });
     S.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+    S.shards.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 500 * dt; s.rot += s.vr * dt; s.t -= dt; });
     S.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
     S.rings.forEach((r) => { r.t -= dt; r.r += (SUS4.radius / 0.4) * dt; });
     S.meter = Math.max(0, S.meter - 6 * dt);
@@ -1372,6 +1419,7 @@ const Level = (() => {
     S.shots = S.shots.filter((s) => !s.gone && s.y > -20 && s.x > -20 && s.x < W + 20);
     S.pickups = S.pickups.filter((k) => !k.gone && k.y < H + 20);
     S.sparks = S.sparks.filter((s) => s.t > 0);
+    S.shards = S.shards.filter((s) => s.t > 0);
     S.texts = S.texts.filter((t) => t.t > 0);
     S.rings = S.rings.filter((r) => r.t > 0);
   }
@@ -1384,9 +1432,9 @@ const Level = (() => {
     if (S.shake > 0) ctx.translate(rand(-4, 4) * S.shake * 3, rand(-3, 3) * S.shake * 3);
 
     const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, ['#16141c', '#1a1420', '#201318'][S.phase]); bg.addColorStop(1, '#0f0e13');
+    bg.addColorStop(0, ['#16141c', '#1a1420', '#201318'][tier()]); bg.addColorStop(1, '#0f0e13');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = ['rgba(94, 62, 132, 0.18)', 'rgba(154, 127, 224, 0.16)', 'rgba(255, 93, 122, 0.14)'][S.phase]; ctx.lineWidth = 1;
+    ctx.strokeStyle = ['rgba(94, 62, 132, 0.18)', 'rgba(154, 127, 224, 0.16)', 'rgba(255, 93, 122, 0.14)'][tier()]; ctx.lineWidth = 1;
     for (let i = 0; i < 10; i++) { ctx.beginPath(); ctx.moveTo(W / 2 + (i - 4.5) * 40, H * 0.55); ctx.lineTo(W / 2 + (i - 4.5) * 150, H); ctx.stroke(); }
 
     // Note and chord warnings (dashed aim lines) and floor warnings
@@ -1490,6 +1538,14 @@ const Level = (() => {
     for (const k of S.pickups) drawHeadphones(k.x, k.y, 0.7, '#E2D9FF', true);
     drawPlayer(p);
 
+    for (const s of S.shards) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, s.t * 1.5);
+      ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+      ctx.fillStyle = '#E2D9FF';
+      ctx.beginPath(); ctx.moveTo(0, -s.size); ctx.lineTo(s.size * 0.7, s.size * 0.6); ctx.lineTo(-s.size * 0.6, s.size * 0.4); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
     for (const s of S.sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.6); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
     ctx.globalAlpha = 1;
     for (const t of S.texts) {
@@ -1509,14 +1565,16 @@ const Level = (() => {
   // The Circle: all twelve keys orbiting a core, in circle-of-fifths order,
   // spinning faster each phase. F, the key you're fighting for, glows.
   const RING = ['C', 'G', 'D', 'A', 'E', 'B', 'F♯', 'D♭', 'A♭', 'E♭', 'B♭', 'F'];
+  // The ring spins faster as keys break; it stops at the end.
+  const ringSpin = () => (S.finale ? 0 : S.time * (0.5 + S.phase * 0.09));
   function drawBoss(b) {
     const glow = S.transition ? 0.6 + 0.4 * Math.sin(S.time * 14) : S.finale ? 0.3 : b.warn;
-    const main = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][S.phase];
+    const main = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][tier()];
     const pale = '#E2D9FF';
     ctx.save();
     ctx.translate(b.x + (b.stun > 0 && !S.finale ? Math.sin(S.time * 30) * 3 : 0), b.y);
     ctx.scale(BOSS_SIZE, BOSS_SIZE);
-    const spin = S.finale ? 0 : S.time * (0.5 + S.phase * 0.35);
+    const spin = ringSpin();
     // Orbit track
     ctx.strokeStyle = `rgba(200, 184, 255, ${0.2 + glow * 0.4})`; ctx.lineWidth = 2;
     ctx.setLineDash([3, 7]);
@@ -1530,17 +1588,34 @@ const Level = (() => {
     ctx.shadowBlur = 0;
     ctx.fillStyle = main; ctx.font = '600 34px Oswald, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('F', 0, 12);
-    // The twelve keys
+    // The eleven orbiting keys (F's place in the ring is the core). Destroyed
+    // keys are gone; the one breaking swells, shakes and cracks, then bursts.
+    const br = S.transition;
     RING.forEach((label, i) => {
+      if (label === 'F') return;
+      const breaking = br && br.index === i;
+      if (i < S.phase - (breaking ? 1 : 0) || (breaking && br.burst)) return;
       const a = spin + (i / 12) * Math.PI * 2 - Math.PI / 2;
-      const x = Math.cos(a) * 74, y = Math.sin(a) * 74;
-      const home = label === 'F';
-      ctx.fillStyle = home ? pale : '#1d1b22';
-      ctx.strokeStyle = home ? pale : main; ctx.lineWidth = 2;
-      ctx.shadowColor = main; ctx.shadowBlur = home ? 18 : 6;
-      ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      let x = Math.cos(a) * 74, y = Math.sin(a) * 74, r = 15;
+      const k = breaking ? 1 - (br.t - (BREAK - 0.55)) / 0.55 : 0; // 0 to 1 while it cracks
+      if (breaking) { x += Math.cos(a) * 26 * k + rand(-3, 3) * k; y += Math.sin(a) * 26 * k + rand(-3, 3) * k; r = 15 + 9 * k; }
+      ctx.fillStyle = breaking ? `rgba(255, 255, 255, ${0.3 + 0.7 * k})` : '#1d1b22';
+      ctx.strokeStyle = breaking ? '#fff' : main; ctx.lineWidth = 2;
+      ctx.shadowColor = breaking ? '#fff' : main; ctx.shadowBlur = breaking ? 10 + 30 * k : 6;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = home ? '#181818' : pale; ctx.font = '600 13px Oswald, sans-serif';
+      if (breaking) {
+        // Cracks spreading across it
+        ctx.strokeStyle = '#181818'; ctx.lineWidth = 1.5;
+        for (let c = 0; c < 4; c++) {
+          const ca = c * 1.7 + i;
+          ctx.beginPath(); ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.cos(ca) * r * k, y + Math.sin(ca) * r * k);
+          ctx.lineTo(x + Math.cos(ca + 0.5) * r * 1.1 * k, y + Math.sin(ca + 0.5) * r * 1.1 * k);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = breaking ? '#181818' : pale; ctx.font = `600 ${breaking ? 15 : 13}px Oswald, sans-serif`;
       ctx.fillText(label, x, y + 5);
     });
     if (b.stun > 0 && !S.finale) { ctx.fillStyle = pale; ctx.font = '600 16px Oswald, sans-serif'; ctx.fillText('STUNNED', 0, -98); }
@@ -1565,21 +1640,13 @@ const Level = (() => {
 
   function drawTransition() {
     if (!S.transition) return;
-    const k = 1 - S.transition.t / TRANSITION;
-    ctx.globalAlpha = Math.min(1, (TRANSITION - S.transition.t) * 3, S.transition.t * 3);
-    ctx.fillStyle = 'rgba(12, 11, 16, 0.55)';
-    ctx.fillRect(0, 0, W, H);
+    const t = S.transition;
+    ctx.globalAlpha = Math.min(1, (BREAK - t.t) * 4, t.t * 3);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#E6E1EC'; ctx.font = '600 40px Oswald, sans-serif';
-    ctx.fillText(`PHASE ${S.transition.next + 1} COMMENCING`, W / 2, H / 2 - 8);
+    ctx.fillStyle = '#E6E1EC'; ctx.font = '600 34px Oswald, sans-serif';
+    ctx.fillText(`${keyLabel(t.key)} DESTROYED`, W / 2, H / 2);
     ctx.fillStyle = '#9A93A3'; ctx.font = '500 12px Oswald, sans-serif';
-    ctx.fillText('THE CIRCLE TURNS', W / 2, H / 2 + 22);
-    ctx.fillStyle = '#26232d'; roundRect(W / 2 - 160, H / 2 + 34, 320, 10, 5); ctx.fill();
-    const bar = ctx.createLinearGradient(W / 2 - 160, 0, W / 2 + 160, 0);
-    bar.addColorStop(0, '#5E3E84'); bar.addColorStop(1, '#ff5d7a');
-    ctx.fillStyle = bar; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 12;
-    roundRect(W / 2 - 160, H / 2 + 34, 320 * k, 10, 5); ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.fillText(`${12 - t.next} KEY${12 - t.next === 1 ? '' : 'S'} LEFT`, W / 2, H / 2 + 22);
     ctx.globalAlpha = 1;
   }
 
@@ -1587,8 +1654,12 @@ const Level = (() => {
     const b = S.boss;
     ctx.textAlign = 'left'; ctx.font = '600 14px Oswald, sans-serif';
     ctx.fillStyle = '#E6E1EC'; ctx.fillText('THE CIRCLE', 16, 24);
-    ctx.fillStyle = '#26232d'; roundRect(116, 13, 260, 12, 6); ctx.fill();
-    ctx.fillStyle = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][S.phase]; roundRect(116, 13, 260 * (b.hp / 100), 12, 6); ctx.fill();
+    // One bar split into twelve sections, one per key, emptying right to left.
+    const BX = 116, BW = 300;
+    ctx.fillStyle = '#26232d'; roundRect(BX, 13, BW, 12, 6); ctx.fill();
+    ctx.fillStyle = ['#9A7FE0', '#C8B8FF', '#ff8fa6'][tier()]; roundRect(BX, 13, BW * (b.hp / 100), 12, 6); ctx.fill();
+    ctx.fillStyle = '#121116';
+    for (let i = 1; i < 12; i++) ctx.fillRect(BX + (BW * i) / 12 - 1, 12, 2, 14);
     ctx.textAlign = 'right'; ctx.fillStyle = '#E6E1EC';
     ctx.fillText('VOLUME', W - 236, 24);
     ctx.fillStyle = '#26232d'; roundRect(W - 216, 13, 200, 12, 6); ctx.fill();
