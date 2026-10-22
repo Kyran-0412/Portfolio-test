@@ -170,6 +170,20 @@ try {
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of A.');
   console.log('✓ beating the boss gives the key of A');
 
+  // Triads sound as the chord's root down low under the key's root and fifth; never the same twice running.
+  const voicing = await S(() => {
+    const s = window.__boss, played = [];
+    const orig = BOSS.chord; BOSS.chord = (notes) => played.push(notes);
+    s.phase = 2; let repeats = 0, last = null, n = 0;
+    for (let i = 0; i < 300; i++) { s.warnings = []; attack(); const w = s.warnings[0]; if (w.kind === 'chord') { n++; if (w.triad === last) repeats++; last = w.triad; fire(w); } }
+    BOSS.chord = orig; s.notes = [];
+    return { repeats, n, tops: [...new Set(played.map((p) => p.slice(1).join(',')))], basses: [...new Set(played.map((p) => p[0]))].sort((a, b) => a - b) };
+  });
+  assert.ok(voicing.n > 50 && voicing.repeats === 0, `no chord twice in a row (${voicing.repeats} of ${voicing.n})`);
+  assert.deepEqual(voicing.tops, ['57,64'], 'always A3 + E4 on top');
+  assert.deepEqual(voicing.basses, [45, 47, 49, 50, 52, 54], 'the bass moves: A2 B2 C♯3 D3 E3 F♯3');
+  console.log('✓ triads voiced as bass note + A and E, never the same chord twice in a row');
+
   // The aim line follows the player while it warns, lagging behind; the shot then flies straight.
   await calm();
   const track = await S(async () => {

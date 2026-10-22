@@ -1355,7 +1355,8 @@ const Level = (() => {
     const chord = Math.random() < ph.chords;
     const tx = aimX();
     if (chord) {
-      const triad = pick(TRIADS);
+      const triad = pick(TRIADS.filter((t) => t !== S.lastTriad)); // never the same chord twice in a row
+      S.lastTriad = triad;
       S.warnings.push({ t: ph.warn + 0.15, total: ph.warn + 0.15, tx, kind: 'chord', triad });
     } else {
       S.warnings.push({ t: ph.warn, total: ph.warn, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
@@ -1379,7 +1380,9 @@ const Level = (() => {
     } else {
       const spread = w.triad.major ? 0.3 : 0.14; // major chords spread wide, minor narrow
       w.triad.notes.forEach((m, i) => launch(m, base + (i - 1) * spread, 'chord'));
-      BOSS.chord(w.triad.notes, 0, BOSS_CHORD, 0.5);
+      // Voiced like a church pad: the chord's root down low, under the key's
+      // root and fifth (A3 + E4). The projectiles are still the triad's notes.
+      BOSS.chord([w.triad.notes[0] - 12, ROOT, ROOT + 7], 0, BOSS_CHORD, 0.5);
     }
   }
 
