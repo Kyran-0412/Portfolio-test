@@ -58,6 +58,8 @@ const Sound = (() => {
       75: 'https://static.wixstatic.com/mp3/281301_16f671b2217b41f598861eff6aebcff1.wav', // E♭5
     },
   });
+  // Backing tracks (drones and drum loops) go in SOUNDS too, as plain links.
+  const MUSIC_GAIN = 0.5; // backing tracks' level under everything else
   const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
   const LASER_FADE = 0.5; // seconds a laser's sound takes to fade out when it ends
 
@@ -356,6 +358,34 @@ const Sound = (() => {
     return inst;
   }
 
+  // A backing track: loops the whole file (WAV loops are cut to exact bars,
+  // so nothing is trimmed). Returns null if its file isn't loaded, so a fight
+  // with no music yet just carries on. start is when its first downbeat plays.
+  function track(name, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
+    const buf = named[name];
+    if (!buf || !buf.getChannelData) return null;
+    const a = audio(), t = a.currentTime + 0.05;
+    const src = a.createBufferSource(), gain = a.createGain();
+    src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
+    gain.gain.setValueAtTime(fadeIn ? 0.0001 : volume, t);
+    if (fadeIn) gain.gain.exponentialRampToValueAtTime(volume, t + fadeIn);
+    src.connect(gain).connect(out);
+    src.start(t);
+    let stopped = false;
+    return {
+      start: t,
+      stop(fade = 1) {
+        if (stopped) return;
+        stopped = true;
+        const now = a.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
+        gain.gain.setTargetAtTime(0.0001, now, fade / 4);
+        src.stop(now + fade + 0.1);
+      },
+    };
+  }
+
   // A laser's sound, in three parts: the charge while it warns, then (call
   // live()) the hit plus the beam loop underneath it. Any part without a
   // sample uses the old synth tritone instead. stop() fades everything.
@@ -386,6 +416,7 @@ const Sound = (() => {
     unlock: audio,
     laser,
     instrument,
+    track,
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],

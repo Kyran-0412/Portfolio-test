@@ -253,6 +253,8 @@ const Sound = (() => {
       75: 'https://static.wixstatic.com/mp3/281301_16f671b2217b41f598861eff6aebcff1.wav', // E♭5
     },
   });
+  // Backing tracks (drones and drum loops) go in SOUNDS too, as plain links.
+  const MUSIC_GAIN = 0.5; // backing tracks' level under everything else
   const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
   const LASER_FADE = 0.5; // seconds a laser's sound takes to fade out when it ends
 
@@ -551,6 +553,34 @@ const Sound = (() => {
     return inst;
   }
 
+  // A backing track: loops the whole file (WAV loops are cut to exact bars,
+  // so nothing is trimmed). Returns null if its file isn't loaded, so a fight
+  // with no music yet just carries on. start is when its first downbeat plays.
+  function track(name, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
+    const buf = named[name];
+    if (!buf || !buf.getChannelData) return null;
+    const a = audio(), t = a.currentTime + 0.05;
+    const src = a.createBufferSource(), gain = a.createGain();
+    src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
+    gain.gain.setValueAtTime(fadeIn ? 0.0001 : volume, t);
+    if (fadeIn) gain.gain.exponentialRampToValueAtTime(volume, t + fadeIn);
+    src.connect(gain).connect(out);
+    src.start(t);
+    let stopped = false;
+    return {
+      start: t,
+      stop(fade = 1) {
+        if (stopped) return;
+        stopped = true;
+        const now = a.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
+        gain.gain.setTargetAtTime(0.0001, now, fade / 4);
+        src.stop(now + fade + 0.1);
+      },
+    };
+  }
+
   // A laser's sound, in three parts: the charge while it warns, then (call
   // live()) the hit plus the beam loop underneath it. Any part without a
   // sample uses the old synth tritone instead. stop() fades everything.
@@ -581,6 +611,7 @@ const Sound = (() => {
     unlock: audio,
     laser,
     instrument,
+    track,
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],
@@ -1049,6 +1080,10 @@ const Level = (() => {
   const ROOT = 57; // A3
   // The boss's own synth (your attacks stay on the piano). Long, washy release.
   const BOSS = Sound.instrument('feedback', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
+  // Backing: a drone under the whole fight, and a drum loop per phase at its
+  // own tempo. While drums play, the boss's shots land on the beat (8ths).
+  const MUSIC = { drone: 'feedback-drone', drums: ['feedback-drums-1', 'feedback-drums-2', 'feedback-drums-3'], bpm: [120, 128, 136] };
+  let music = { drone: null, drums: null, beat: null };
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
   const TRIADS = [ // diatonic chords of A major, as MIDI notes
     { name: 'A', notes: [57, 61, 64], major: true }, { name: 'D', notes: [62, 66, 69], major: true },
@@ -1120,7 +1155,7 @@ const Level = (() => {
             <div class="buttons" id="endButtons"></div>
           </div>
         </div>`;
-      Sound.preload(['feedback']);
+      Sound.preload(['feedback', MUSIC.drone, ...MUSIC.drums]);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -1152,8 +1187,34 @@ const Level = (() => {
     window.__boss = S; // for automatic tests
   }
 
+  // ---------- Music ----------
+  function startDrums(phase) {
+    if (music.drums) music.drums.stop(0.3);
+    music.drums = Sound.track(MUSIC.drums[phase]);
+    music.beat = music.drums ? { t0: music.drums.start, len: 60 / MUSIC.bpm[phase] / 2 } : null;
+  }
+  function startMusic(phase) {
+    stopMusic(0.3);
+    music.drone = Sound.track(MUSIC.drone, { fadeIn: 1.5 });
+    startDrums(phase);
+  }
+  function stopMusic(fade = 1.2) {
+    if (music.drone) music.drone.stop(fade);
+    if (music.drums) music.drums.stop(fade);
+    music = { drone: null, drums: null, beat: null };
+  }
+  // Stretches a warning so the shot lands on the next 8th note of the drums.
+  function onBeat(warn) {
+    if (!music.beat) return warn;
+    const now = Sound.unlock().currentTime, { t0, len } = music.beat;
+    const at = t0 + Math.ceil((now + warn - t0) / len) * len;
+    return at - now;
+  }
+  window.__music = () => music; // for automatic tests
+
   function begin(phase) {
     newState(phase);
+    startMusic(phase);
     S.running = true;
     ui.end.classList.remove('show');
     Level.piano.setEnabled(true);
@@ -1281,9 +1342,11 @@ const Level = (() => {
     const tx = aimX();
     if (chord) {
       const triad = pick(TRIADS);
-      S.warnings.push({ t: ph.warn + 0.15, total: ph.warn + 0.15, tx, kind: 'chord', triad });
+      const t = onBeat(ph.warn + 0.15);
+      S.warnings.push({ t, total: t, tx, kind: 'chord', triad });
     } else {
-      S.warnings.push({ t: ph.warn, total: ph.warn, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
+      const t = onBeat(ph.warn);
+      S.warnings.push({ t, total: t, tx, kind: 'note', midi: pick(SCALE.slice(0, 7)) });
     }
   }
 
@@ -1374,6 +1437,9 @@ const Level = (() => {
     S.notes = [];
     S.banner = null;
     Sound.chord([rootMidi('A') - 12, rootMidi('A') - 5], 0, TRANSITION, 0.25);
+    // The drums fade out over the pause; the next phase's loop starts after it.
+    if (music.drums) music.drums.stop(TRANSITION * 0.8);
+    music.drums = null; music.beat = null;
   }
 
   function endTransition() {
@@ -1383,6 +1449,7 @@ const Level = (() => {
     if (next === 1) { S.unlocked.add(FIFTH_PC); Level.piano.setAllowed([...S.unlocked]); }
     if (next === 2 && !thirdFound) startMoment();
     S.attackIn = 1;
+    startDrums(next);
   }
 
   function hurt() {
@@ -1413,6 +1480,7 @@ const Level = (() => {
   // ---------- Endings ----------
   function finish(title, text, buttons) {
     S.running = false;
+    stopMusic();
     endHold();
     endMoment();
     Level.piano.setEnabled(false);
@@ -1453,6 +1521,7 @@ const Level = (() => {
   function win() {
     S.over = true;
     S.running = false;
+    stopMusic(2);
     endHold();
     endMoment();
     S.notes = [];
