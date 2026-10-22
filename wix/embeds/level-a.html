@@ -1115,6 +1115,9 @@ const Level = (() => {
   const HEARTS = 3;           // hits you can take before losing the fight
   const TRANSITION = 3;       // seconds of calm between phases
   const CLIP_STUN = 2;        // seconds you're stunned after clipping
+  // The aim line follows you while it warns, lagging behind, then the shot
+  // flies straight from wherever it was pointing when it fired.
+  const TRACK = { on: true, follow: 3.5, maxSpeed: 300 }; // follow: how quickly it catches up; maxSpeed: px/s
   const CLIP_RESET = 70;      // your volume meter drops to this after clipping
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
@@ -1567,7 +1570,14 @@ const Level = (() => {
     if (S.pickupIn <= 0) { S.pickups.push({ x: rand(60, W - 60), y: -20 }); S.pickupIn = rand(12, 16); }
 
     // Warnings count down, then fire.
-    S.warnings.forEach((w) => { w.t -= dt; });
+    S.warnings.forEach((w) => {
+      w.t -= dt;
+      if (TRACK.on && w.tx !== undefined) {
+        const want = aimX() - w.tx;
+        const step = want * (1 - Math.exp(-TRACK.follow * dt));
+        w.tx += Math.sign(step) * Math.min(Math.abs(step), TRACK.maxSpeed * dt);
+      }
+    });
     S.warnings.filter((w) => w.t <= 0).forEach(fire);
     S.warnings = S.warnings.filter((w) => w.t > 0);
     b.warn = S.warnings.length ? 1 - Math.min(...S.warnings.map((w) => w.t / w.total)) : 0;
