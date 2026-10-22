@@ -1380,9 +1380,9 @@ const Level = (() => {
     } else {
       const spread = w.triad.major ? 0.3 : 0.14; // major chords spread wide, minor narrow
       w.triad.notes.forEach((m, i) => launch(m, base + (i - 1) * spread, 'chord'));
-      // Voiced like a church pad: the chord's root down low, under the key's
-      // root and fifth (A3 + E4). The projectiles are still the triad's notes.
-      BOSS.chord([w.triad.notes[0] - 12, ROOT, ROOT + 7], 0, BOSS_CHORD, 0.5);
+      // It sounds just the chord's root and third (A + C♯ for A major); the
+      // projectiles are still all three of the triad's notes.
+      BOSS.chord([w.triad.notes[0], w.triad.notes[1]], 0, BOSS_CHORD, 0.5);
     }
   }
 
