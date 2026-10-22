@@ -68,7 +68,7 @@ try {
   await boss.locator('#startBtn').click();
   const bf = page.frames().find((f) => f.url().includes('level-fsharp.html'));
   await bf.waitForFunction(() => Sound.samples.done && Sound.has('red-beam'), null, { timeout: 5000 });
-  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 7} / ${total + 7} loaded`, 'piano + 6 red + 1 violet laser files');
+  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 12} / ${total + 12} loaded`, 'piano + 6 red + 6 violet laser files');
   const log = await bf.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a), origOsc = a.createOscillator.bind(a);
@@ -82,7 +82,10 @@ try {
     const out = { afterCharge, total: made.length, loopRate: loop && loop.playbackRate.value, trimmed: loop && loop.loopEnd > loop.loopStart, oscs };
     const shifted = Sound.laser('red', 53, 0.1); shifted.live(); // F root: nearest is F♯, a semitone down
     out.fRate = made.filter((s) => s.loop).at(-1).playbackRate.value;
-    const violet = Sound.laser('violet', 54, 0.1); violet.live(); // violet charge only so far: the beam is the synth
+    const before = made.length;
+    const violet = Sound.laser('violet', 54, 0.1); violet.live();
+    out.violetSources = made.length - before;
+    out.violetLoop = made.at(-1).loop;
     out.violetOscs = oscs;
     red.stop(); shifted.stop(); violet.stop();
     a.createBufferSource = orig; a.createOscillator = origOsc;
@@ -94,8 +97,10 @@ try {
   assert.ok(log.trimmed, 'the loop is trimmed');
   assert.equal(log.oscs, 0, 'no synth while red samples exist');
   assert.ok(Math.abs(log.fRate - Math.pow(2, -1 / 12)) < 1e-6, 'F shifts the F♯ beam down a semitone');
-  assert.ok(log.violetOscs >= 4, 'violet’s beam falls back to the synth tritone');
-  console.log('✓ lasers: only the fights load them; charge → hit + pitched beam loop; violet uses the synth for now');
+  assert.equal(log.violetSources, 3, 'violet: charge, hit, beam');
+  assert.ok(log.violetLoop, 'the violet beam loops');
+  assert.equal(log.violetOscs, 0, 'no synth left in the lasers');
+  console.log('✓ lasers: only the fights load them; charge → hit + pitched beam loop; both colours fully sampled');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');
