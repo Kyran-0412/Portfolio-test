@@ -32,6 +32,22 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## Laser sounds (red done, violet next)
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-fsharp.html` | Level F♯ page's Embed HTML box |
+| `wix/embeds/level-f.html` | Level F page's Embed HTML box |
+
+Lasers play your samples in three parts: the charge while the preview line shows, then the hit and
+the beam loop together the moment it goes live. The charge and hit play as recorded; the beam loop is
+the nearest of four pitches (root + tritone on C, E♭, F♯, A, around octave 3), shifted into the fight's
+key. A pair of red lasers shares one sound. Loops skip the silence MP3s add at each end. Any part with
+no sample (violet, for now) uses the old synth hum. The links are in `SOUNDS` in `src/lib/sound.js`,
+and `LASER_GAIN` sets their level. Only the two laser fights download them.
+
 ## Audio samples (testing the first one)
 
 **Files to update in Wix**

@@ -153,6 +153,7 @@
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
+      Sound.preload(['red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -341,13 +342,13 @@
     const ph = PHASES[S.phase], p = S.player;
     // e counts up from 0: the first LASER_WARN seconds are the preview, then
     // the live beam carries on along the same path at the same speed.
-    const make = (fromX, toX, cancellable, reverse) => ({
+    const make = (fromX, toX, cancellable, reverse, silent) => ({
       stage: 'warn', e: 0, dur: ph.sweep, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, reverse,
-      sound: [ROOT, ROOT + 6].map((m) => Sound.hold(m, cancellable ? 0.09 : 0.12)), // root + augmented 4th: the tritone
+      sound: silent ? [] : [Sound.laser(cancellable ? 'violet' : 'red', ROOT, cancellable ? 0.09 : 0.12)], // root + augmented 4th: the tritone
     });
     if (Math.random() < PHASES[S.phase].red) {
       // Red double lasers closing in from both sides: dash through one.
-      S.lasers.push(make(20, p.x + 30, false, false), make(W - 20, p.x - 30, false, false));
+      S.lasers.push(make(20, p.x + 30, false, false), make(W - 20, p.x - 30, false, false, true)); // one sound for the pair
     } else {
       const dir = (Math.random() < 0.5 ? 1 : -1) * mirror();
       const from = Math.min(W - 20, Math.max(20, p.x - dir * 280));
@@ -636,6 +637,7 @@
       const k = (l.e - LASER_WARN) / l.dur;
       const along = l.reverse ? (k < 0.5 ? k * 2 : (1 - k) * 2) : k; // some sweeps turn back halfway
       l.a = l.a0 + (l.a1 - l.a0) * along;
+      if (k >= 0 && l.stage === 'warn') l.sound.forEach((v) => v.live && v.live()); // the beam goes live
       l.stage = k < 0 ? 'warn' : 'sweep';
       if (k >= 1) { endLaser(l); continue; }
       if (l.stage === 'warn') continue;

@@ -239,12 +239,31 @@ const Sound = (() => {
     84: 'https://static.wixstatic.com/mp3/281301_df0024f76ace48bb9d646668e6c85134.wav', // C6
   };
 
+  // Named sounds, loaded only by the levels that ask for them (Sound.preload).
+  // A link plays as it is; a { note: link } set is pitched like the piano,
+  // from the nearest one. Lasers are root + tritone, recorded around octave 3.
+  const SOUNDS = {
+    'red-charge': 'https://static.wixstatic.com/mp3/281301_4d8e6f555653447497e7add012050509.wav',
+    'red-hit': 'https://static.wixstatic.com/mp3/281301_5ac0974a5bb04217b924de8f7e8c13d9.wav',
+    'red-beam': { // a seamless loop
+      48: 'https://static.wixstatic.com/mp3/281301_3a422f96cb4743fd86cea5b237f74b8a.mp3', // C3 + F♯3
+      51: 'https://static.wixstatic.com/mp3/281301_240233f4f3b4402c88fbb470eca3639f.wav', // E♭3 + A3
+      54: 'https://static.wixstatic.com/mp3/281301_554c1af92c7d4964b0a2981953f9cfe4.mp3', // F♯3 + C4
+      57: 'https://static.wixstatic.com/mp3/281301_8b9c715c68b2437cb69ef69dce882831.mp3', // A3 + E♭4
+    },
+    // 'violet-charge', 'violet-hit' and 'violet-beam' go here when they're ready.
+  };
+  const LASER_GAIN = 0.6; // the laser samples' level; tune by ear
+
   const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
   let ctx = null;
   let out = null;
   const buffers = {};
+  const named = {}; // name → buffer, or { note: buffer }
+  const wanted = new Set(); // named sounds a level asked for
   // How the samples are doing, for the Preview-only status line.
   const status = { total: Object.keys(SAMPLES).length, loaded: 0, blocked: 0, broken: 0, done: false };
+  let pending = 0;
   let onStatus = () => {};
 
   function audio() {
@@ -252,14 +271,19 @@ const Sound = (() => {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       out = ctx.createDynamicsCompressor();
       out.connect(ctx.destination);
-      loadSamples();
+      Object.entries(SAMPLES).forEach(([midi, url]) => load(url, (b) => { buffers[midi] = b; }));
+      wanted.forEach(loadNamed);
+      if (!pending) finishLoad();
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
 
-  async function loadSamples() {
-    await Promise.all(Object.entries(SAMPLES).map(async ([midi, url]) => {
+  function finishLoad() { status.done = true; onStatus(status); }
+  // Downloads and decodes one sound. A missing one just falls back to the synth.
+  async function load(url, store) {
+    pending++;
+    try {
       let data;
       try {
         const res = await fetch(url);
@@ -270,16 +294,71 @@ const Sound = (() => {
         return;
       }
       try {
-        buffers[midi] = await ctx.decodeAudioData(data);
+        store(await ctx.decodeAudioData(data));
         status.loaded++;
       } catch (err) {
         status.broken++; // downloaded, but not a sound the browser can play
       }
+    } finally {
+      pending--;
       onStatus(status);
-    }));
-    status.done = true;
-    onStatus(status);
-    // A missing sample just falls back to the synth.
+      if (!pending) finishLoad();
+    }
+  }
+  function loadNamed(name) {
+    const src = SOUNDS[name];
+    if (!src) return;
+    status.done = false;
+    if (typeof src === 'string') { status.total++; load(src, (b) => { named[name] = b; }); return; }
+    named[name] = {};
+    for (const [midi, url] of Object.entries(src)) { status.total++; load(url, (b) => { named[name][midi] = b; }); }
+  }
+
+  // Loops skip the silence MP3s add at each end, so they don't stutter.
+  function trimmed(buf) {
+    if (buf.trim) return buf.trim;
+    const d = buf.getChannelData(0);
+    let a = 0, b = d.length - 1;
+    while (a < b && Math.abs(d[a]) < 1e-4) a++;
+    while (b > a && Math.abs(d[b]) < 1e-4) b--;
+    buf.trim = [a / buf.sampleRate, (b + 1) / buf.sampleRate];
+    return buf.trim;
+  }
+  // Plays a buffer; returns stop(fade). For loops, repeats the trimmed middle.
+  function playBuffer(buf, { rate = 1, loop = false, volume = 1 } = {}) {
+    const a = audio(), t = a.currentTime + 0.005;
+    const src = a.createBufferSource(), gain = a.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    gain.gain.setValueAtTime(volume, t);
+    src.connect(gain).connect(out);
+    if (loop) {
+      const [ls, le] = trimmed(buf);
+      src.loop = true; src.loopStart = ls; src.loopEnd = le;
+      src.start(t, ls);
+    } else src.start(t);
+    let stopped = false;
+    return {
+      stop(fade = 0.08) {
+        if (stopped) return;
+        stopped = true;
+        const now = a.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + fade);
+        src.stop(now + fade + 0.02);
+      },
+    };
+  }
+  // The nearest note in a pitched set, counting octaves either way.
+  function nearestIn(set, midi) {
+    let best = null;
+    for (const m of Object.keys(set).map(Number)) {
+      for (const o of [-12, 0, 12]) {
+        if (best === null || Math.abs(midi - (m + o)) < Math.abs(midi - best.at)) best = { m, at: m + o };
+      }
+    }
+    return best && { buf: set[best.m], rate: Math.pow(2, (midi - best.at) / 12) };
   }
 
   function nearestSample(midi) {
@@ -293,13 +372,13 @@ const Sound = (() => {
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
   // Starts a note that rings until stop() is called. Used for held keys.
-  function voice(midi, t, volume) {
+  function voice(midi, t, volume, synthOnly = false) {
     const a = audio();
     const gain = a.createGain();
     gain.connect(out);
     const sources = [];
 
-    const sample = nearestSample(midi);
+    const sample = synthOnly ? null : nearestSample(midi);
     if (sample !== null) {
       const src = a.createBufferSource();
       src.buffer = buffers[sample];
@@ -389,8 +468,38 @@ const Sound = (() => {
     osc.stop(t + length + 0.05);
   }
 
+  // A laser's sound, in three parts: the charge while it warns, then (call
+  // live()) the hit plus the beam loop underneath it. Any part without a
+  // sample uses the old synth tritone instead. stop() fades everything.
+  function laser(colour, root, synthVolume) {
+    const charge = named[`${colour}-charge`], hit = named[`${colour}-hit`], beams = named[`${colour}-beam`];
+    const loops = beams && Object.keys(beams).length ? beams : null;
+    const synth = () => [root, root + 6].map((m) => voice(m, audio().currentTime + 0.01, synthVolume, true)); // a steady hum, not the piano
+    const parts = [];
+    let chargeParts = charge ? [playBuffer(charge, { volume: LASER_GAIN })] : loops ? synth() : null;
+    // With no laser samples at all, the synth tritone carries straight through.
+    if (!chargeParts) { const held = synth(); return { live() {}, stop() { held.forEach((v) => v.stop()); } }; }
+    parts.push(...chargeParts);
+    let isLive = false;
+    return {
+      live() {
+        if (isLive) return;
+        isLive = true;
+        chargeParts.forEach((v) => v.stop(0.04));
+        if (hit) parts.push(playBuffer(hit, { volume: LASER_GAIN }));
+        if (loops) { const n = nearestIn(loops, root); parts.push(playBuffer(n.buf, { rate: n.rate, loop: true, volume: LASER_GAIN })); }
+        else parts.push(...synth());
+      },
+      stop() { parts.forEach((v) => v.stop()); },
+    };
+  }
+
   return {
     unlock: audio,
+    laser,
+    // Levels list the named sounds they use, so others don't download them.
+    preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
+    has: (name) => !!named[name],
     // Sample loading progress: { total, loaded, blocked, broken, done }.
     get samples() { return { ...status }; },
     onSamples(fn) { onStatus = fn; fn(status); },

@@ -59,6 +59,44 @@ try {
   assert.equal(await game.locator('#sampleStatus').isVisible(), false, 'players never see it');
   console.log('✓ the status line only shows in Preview');
 
+  // Lasers: only the fights load them. Charge, then hit + a pitched beam loop.
+  ({ game } = await play('preview', 'ok'));
+  assert.equal(await page.frames().find((f) => f.url().includes('level-c.html')).evaluate(() => Sound.has('red-beam')), false, 'the Tutorial skips laser sounds');
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E', 'B'] })));
+  await page.goto(`${base}/dev/sim.html?page=level-fsharp`);
+  const boss = page.frameLocator('#gameEmbed');
+  await boss.locator('#startBtn').click();
+  const bf = page.frames().find((f) => f.url().includes('level-fsharp.html'));
+  await bf.waitForFunction(() => Sound.samples.done && Sound.has('red-beam'), null, { timeout: 5000 });
+  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 6} / ${total + 6} loaded`, 'piano + 6 red laser files');
+  const log = await bf.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a), origOsc = a.createOscillator.bind(a);
+    a.createBufferSource = () => { const s = orig(); made.push(s); return s; };
+    let oscs = 0;
+    a.createOscillator = () => { oscs++; return origOsc(); };
+    const red = Sound.laser('red', 54, 0.1);       // F♯ root: the F♯ beam, unshifted
+    const afterCharge = made.length;
+    red.live();
+    const loop = made.find((s) => s.loop);
+    const out = { afterCharge, total: made.length, loopRate: loop && loop.playbackRate.value, trimmed: loop && loop.loopEnd > loop.loopStart, oscs };
+    const shifted = Sound.laser('red', 53, 0.1); shifted.live(); // F root: nearest is F♯, a semitone down
+    out.fRate = made.filter((s) => s.loop).at(-1).playbackRate.value;
+    const violet = Sound.laser('violet', 54, 0.1); violet.live(); // no violet samples yet: synth
+    out.violetOscs = oscs;
+    red.stop(); shifted.stop(); violet.stop();
+    a.createBufferSource = orig; a.createOscillator = origOsc;
+    return out;
+  });
+  assert.equal(log.afterCharge, 1, 'the charge plays first');
+  assert.equal(log.total, 3, 'then the hit and the beam loop');
+  assert.equal(log.loopRate, 1, 'F♯ uses the F♯ beam as recorded');
+  assert.ok(log.trimmed, 'the loop is trimmed');
+  assert.equal(log.oscs, 0, 'no synth while red samples exist');
+  assert.ok(Math.abs(log.fRate - Math.pow(2, -1 / 12)) < 1e-6, 'F shifts the F♯ beam down a semitone');
+  assert.ok(log.violetOscs >= 4, 'violet falls back to the synth tritone');
+  console.log('✓ lasers: only the fights load them; charge → hit + pitched beam loop; violet uses the synth for now');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');
 } finally {
