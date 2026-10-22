@@ -68,7 +68,7 @@ try {
   await boss.locator('#startBtn').click();
   const bf = page.frames().find((f) => f.url().includes('level-fsharp.html'));
   await bf.waitForFunction(() => Sound.samples.done && Sound.has('red-beam'), null, { timeout: 5000 });
-  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 6} / ${total + 6} loaded`, 'piano + 6 red laser files');
+  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 7} / ${total + 7} loaded`, 'piano + 6 red + 1 violet laser files');
   const log = await bf.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a), origOsc = a.createOscillator.bind(a);
@@ -82,7 +82,7 @@ try {
     const out = { afterCharge, total: made.length, loopRate: loop && loop.playbackRate.value, trimmed: loop && loop.loopEnd > loop.loopStart, oscs };
     const shifted = Sound.laser('red', 53, 0.1); shifted.live(); // F root: nearest is F♯, a semitone down
     out.fRate = made.filter((s) => s.loop).at(-1).playbackRate.value;
-    const violet = Sound.laser('violet', 54, 0.1); violet.live(); // no violet samples yet: synth
+    const violet = Sound.laser('violet', 54, 0.1); violet.live(); // violet charge only so far: the beam is the synth
     out.violetOscs = oscs;
     red.stop(); shifted.stop(); violet.stop();
     a.createBufferSource = orig; a.createOscillator = origOsc;
@@ -94,7 +94,7 @@ try {
   assert.ok(log.trimmed, 'the loop is trimmed');
   assert.equal(log.oscs, 0, 'no synth while red samples exist');
   assert.ok(Math.abs(log.fRate - Math.pow(2, -1 / 12)) < 1e-6, 'F shifts the F♯ beam down a semitone');
-  assert.ok(log.violetOscs >= 4, 'violet falls back to the synth tritone');
+  assert.ok(log.violetOscs >= 4, 'violet’s beam falls back to the synth tritone');
   console.log('✓ lasers: only the fights load them; charge → hit + pitched beam loop; violet uses the synth for now');
 
   assert.deepEqual(errors, [], 'no page errors');
