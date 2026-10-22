@@ -119,6 +119,43 @@ try {
   assert.deepEqual(await S(() => window.__zombie.zombies.map((z) => z.x < 450)), [true], 'only the zombie in front was hit');
   console.log('✓ Mic Swing hits in front of you, not behind');
 
+  // Mic special: Feedback. Ready at the start; letting go early cancels it.
+  await calm(S);
+  const zombie = (type, x, y) => { const z = { walker: 4, brute: 18, spitter: 6, runner: 2 }[type]; return { type, x, y, hp: z, maxHp: z, size: type === 'brute' ? 23 : 14, attackCool: 9, fireIn: 9, flash: 0, wobble: 0 }; };
+  assert.equal(await S(() => window.__zombie.fb.cool), 0, 'ready from the start');
+  await page.keyboard.down('e'); await page.waitForTimeout(500); await page.keyboard.up('e');
+  assert.equal(await S(() => window.__zombie.fb.state), 'idle', 'released early: cancelled');
+  assert.equal(await S(() => window.__zombie.fb.cool), 0, 'no cooldown for a cancelled charge');
+  // A full charge: bar, ear defenders, no swinging, then the blast.
+  await S(([a, b, c]) => { window.__zombie.zombies.push(a, b, c); }, [zombie('walker', 200, 300), zombie('brute', 700, 300), zombie('spitter', 450, 470)]);
+  await S(() => { window.__zombie.zombies.forEach((z) => { z.stun = 99; }); }); // hold them still for the test
+  await page.keyboard.down('e');
+  await page.waitForTimeout(1000);
+  assert.equal(await S(() => window.__zombie.fb.state), 'charging');
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lz-charge.png` });
+  await page.waitForTimeout(1200);
+  assert.equal(await S(() => window.__zombie.fb.state), 'full');
+  await page.keyboard.up('e');
+  assert.equal(await S(() => window.__zombie.fb.state), 'windup');
+  assert.equal(await S(() => Math.round(window.__zombie.fb.cool)), 120, '2 minute cooldown starts');
+  await frame.waitForFunction(() => window.__zombie.fb.state === 'blast', null, { timeout: 2000 });
+  await page.waitForTimeout(350);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lz-blast.png` });
+  await page.waitForTimeout(450);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lz-blast2.png` });
+  await frame.waitForFunction(() => window.__zombie.fb.state === 'idle', null, { timeout: 4000 });
+  const left = await S(() => window.__zombie.zombies.map((z) => [z.type, +(z.hp / z.maxHp).toFixed(2)]));
+  assert.ok(!left.some(([t]) => t === 'walker'), `the walker died (${JSON.stringify(left)})`);
+  const brute = left.find(([t]) => t === 'brute');
+  assert.ok(brute && brute[1] > 0.15 && brute[1] < 0.5, `the brute survives, badly hurt (${JSON.stringify(left)})`);
+  // On cooldown now, and it carries into the next wave.
+  await page.keyboard.down('e'); await page.waitForTimeout(200); await page.keyboard.up('e');
+  assert.equal(await S(() => window.__zombie.fb.state), 'idle', 'on cooldown: nothing happens');
+  const cool = await S(() => window.__zombie.fb.cool);
+  await S(() => startWave(1));
+  assert.ok(Math.abs((await S(() => window.__zombie.fb.cool)) - cool) < 0.5, 'a new wave keeps the cooldown');
+  console.log(`✓ Mic special: charge with E, ear defenders, blast from all 4 speakers (walker dead, brute at ${Math.round(brute[1] * 100)}%), 2 min cooldown kept across waves`);
+
   // Sub Bass: one wave pierces a whole line.
   ({ game, frame, S, at } = await open('bass'));
   await calm(S);

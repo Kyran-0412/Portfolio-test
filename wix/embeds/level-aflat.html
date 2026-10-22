@@ -798,7 +798,7 @@ const Level = (() => {
       desc: 'A slow, wide wave of bass that rolls through every zombie in its path. 4 per clip.',
       rate: 0.8, damage: 4, speed: 300, size: 24, pierce: 99, clip: 4, reload: 2 },
     mic: { name: 'Mic Swing', icon: '🎤', tag: 'Melee',
-      desc: 'Swing your mic on its cable in a wide arc. Big damage and knockback, short reach.',
+      desc: 'Swing your mic in a wide arc: big damage, short reach. Special: hold E to charge a feedback blast from every speaker.',
       rate: 0.42, damage: 5, reach: 80, arc: 1.7 },
   };
 
@@ -817,6 +817,24 @@ const Level = (() => {
     { walker: 16, brute: 5, spitter: 5, runner: 8, gap: 0.6 },
   ];
   const SPAWNERS = [[60, 92], [W - 60, 92], [60, H - 58], [W - 60, H - 58]]; // clear of the HUD at the top
+
+  // Mic Swing's special: Feedback. Hold E to charge (ear defenders go on),
+  // release when the bar is full, and a moment later a shockwave rings out
+  // of all four speaker stacks. Each ring hits every zombie once, for a share
+  // of its health plus a little, so weak zombies drop and brutes survive.
+  // The cooldown carries across waves.
+  const FEEDBACK = {
+    cooldown: 120,    // seconds between blasts
+    readyAtStart: true,
+    charge: 2,        // seconds of holding E to fill the bar
+    windup: 1,        // seconds from release to the blast
+    speed: 520,       // how fast the rings spread, pixels per second
+    share: 0.14,      // each ring takes this share of a zombie's full health…
+    flat: 0.6,        // …plus this much (raised by Louder)
+    stun: 0.6,        // zombies stagger for this long when a ring hits
+    push: 26,         // and get pushed back this far
+  };
+  const RING_END = Math.hypot(W, H) + 40;
 
   // Upgrades offered between waves (three at random). Some only suit one weapon.
   const UPGRADES = [
@@ -850,7 +868,7 @@ const Level = (() => {
           <div class="overlay show" id="choose">
             <h2>Pick your weapon</h2>
             <div class="choices" id="weapons"></div>
-            <p class="controls-help"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move · aim with the mouse · left click (or hold) to attack · <kbd>R</kbd> reload</p>
+            <p class="controls-help"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move · aim with the mouse · left click (or hold) to attack · <kbd>R</kbd> reload · <kbd>E</kbd> hold for the mic’s special</p>
           </div>
           <div class="overlay" id="upgrade">
             <h2 id="upgradeTitle"></h2>
@@ -907,6 +925,7 @@ const Level = (() => {
       zombies: [], shots: [], spits: [], sparks: [], texts: [], swings: [],
       queue: [], spawnIn: 0, fireCool: 0, note: 0, shake: 0, hurtFlash: 0, banner: null, spawnerGlow: [0, 0, 0, 0],
       waveStart: null, // upgrades and health at the start of the wave, for retries
+      fb: { state: 'idle', cool: FEEDBACK.readyAtStart ? 0 : FEEDBACK.cooldown, charge: 0, t: 0, rings: [], flash: 0 },
     };
     window.__zombie = S; // for automatic tests
   }
@@ -939,9 +958,13 @@ const Level = (() => {
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'KeyR' && S && S.mode === 'fight') reload(); // reload early
+    if (e.code === 'KeyE' && !e.repeat) startCharge();
   });
-  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-  window.addEventListener('blur', () => { paused = true; keys = {}; mouse.down = false; });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+    if (e.code === 'KeyE') releaseCharge();
+  });
+  window.addEventListener('blur', () => { paused = true; keys = {}; mouse.down = false; cancelCharge(); });
   window.addEventListener('focus', () => { paused = false; last = performance.now(); });
 
   // ---------- Attacks ----------
@@ -992,6 +1015,104 @@ const Level = (() => {
     else Sound.chord([44 - 12, 44 - 5], 0, 0.45, 0.45); // a low A♭ fifth
   }
 
+  // ---------- Feedback (Mic Swing special) ----------
+  let whine = null; // the rising feedback tone while charging
+  function startCharge() {
+    const f = S && S.fb;
+    if (!f || S.mode !== 'fight' || S.weapon !== 'mic' || f.state !== 'idle') return;
+    if (f.cool > 0) { S.texts.push({ x: S.player.x, y: S.player.y - 30, text: `Feedback in ${formatTime(f.cool)}`, t: 1 }); return; }
+    f.state = 'charging';
+    f.charge = 0;
+    const a = Sound.unlock();
+    const osc = a.createOscillator(), wob = a.createOscillator(), wobGain = a.createGain(), gain = a.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(500, a.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(2200, a.currentTime + FEEDBACK.charge);
+    wob.frequency.value = 7; wobGain.gain.value = 30;
+    wob.connect(wobGain).connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.05, a.currentTime + FEEDBACK.charge);
+    osc.connect(gain).connect(a.destination);
+    osc.start(); wob.start();
+    whine = { osc, wob, gain, a };
+  }
+  function stopWhine() {
+    if (!whine) return;
+    const { osc, wob, gain, a } = whine;
+    gain.gain.cancelScheduledValues(a.currentTime);
+    gain.gain.setTargetAtTime(0.0001, a.currentTime, 0.04);
+    osc.stop(a.currentTime + 0.3); wob.stop(a.currentTime + 0.3);
+    whine = null;
+  }
+  // Letting go early cancels it, with no cooldown.
+  function cancelCharge() {
+    if (!S || !S.fb || !['charging', 'full'].includes(S.fb.state)) return;
+    S.fb.state = 'idle';
+    S.fb.charge = 0;
+    stopWhine();
+  }
+  function releaseCharge() {
+    const f = S && S.fb;
+    if (!f) return;
+    if (f.state === 'charging') return cancelCharge();
+    if (f.state !== 'full') return;
+    f.state = 'windup';
+    f.t = FEEDBACK.windup;
+    f.cool = FEEDBACK.cooldown;
+    stopWhine();
+    // The speakers swell: a low rumble rising into the blast.
+    const a = Sound.unlock(), t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain(), lp = a.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(32, t); o.frequency.exponentialRampToValueAtTime(52, t + FEEDBACK.windup);
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(120, t); lp.frequency.exponentialRampToValueAtTime(900, t + FEEDBACK.windup);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + FEEDBACK.windup); g.gain.exponentialRampToValueAtTime(0.0001, t + FEEDBACK.windup + 0.1);
+    o.connect(lp).connect(g).connect(a.destination);
+    o.start(t); o.stop(t + FEEDBACK.windup + 0.15);
+  }
+  function blast() {
+    const f = S.fb;
+    f.state = 'blast';
+    f.flash = 0.25;
+    f.rings = SPAWNERS.map(([x, y]) => ({ x, y, r: 0, hit: new Set() }));
+    S.shake = Math.max(S.shake, 0.6);
+    Sound.chord([32, 44, 51, 56], 0, 2, 0.7); // a huge low A♭ chord
+    Sound.hit();
+    Sound.whoosh();
+  }
+  function updateFeedback(dt) {
+    const f = S.fb;
+    if (f.state === 'idle' || f.state === 'charging' || f.state === 'full') f.cool = Math.max(0, f.cool - dt);
+    f.flash = Math.max(0, f.flash - dt);
+    if (f.state === 'charging') {
+      f.charge = Math.min(FEEDBACK.charge, f.charge + dt);
+      if (f.charge >= FEEDBACK.charge) { f.state = 'full'; Sound.note(80, 0, 0.25, 0.2); }
+    } else if (f.state === 'windup') {
+      f.t -= dt;
+      if (f.t <= 0) blast();
+    } else if (f.state === 'blast') {
+      for (const ring of f.rings) {
+        ring.r += FEEDBACK.speed * dt;
+        for (const z of S.zombies) {
+          if (z.dead || ring.hit.has(z)) continue;
+          const d = Math.hypot(z.x - ring.x, z.y - ring.y);
+          if (d > ring.r) continue;
+          ring.hit.add(z);
+          hurtZombie(z, z.maxHp * FEEDBACK.share + FEEDBACK.flat * S.mods.damage);
+          z.stun = FEEDBACK.stun;
+          z.x += ((z.x - ring.x) / (d || 1)) * FEEDBACK.push;
+          z.y += ((z.y - ring.y) / (d || 1)) * FEEDBACK.push;
+          for (let i = 0; i < 4; i++) spark(z.x, z.y, '#E2D9FF');
+        }
+        for (const sp of S.spits) if (Math.hypot(sp.x - ring.x, sp.y - ring.y) < ring.r) sp.gone = true;
+      }
+      if (f.rings.every((r) => r.r > RING_END)) { f.state = 'idle'; f.rings = []; }
+    }
+  }
+  // Ear defenders stay on from the first moment of charging to the last ring.
+  const defended = () => S.fb.state !== 'idle';
+  const fbLevel = () => (S.fb.state === 'charging' ? S.fb.charge / FEEDBACK.charge : ['full', 'windup'].includes(S.fb.state) ? 1 : 0);
+  const formatTime = (sec) => { const t = Math.ceil(sec); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
   function hurtZombie(z, amount) {
     z.hp -= amount;
     z.flash = 0.1;
@@ -1019,6 +1140,8 @@ const Level = (() => {
   // ---------- Between waves ----------
   function waveCleared() {
     S.spits = []; S.hurtFlash = 0; S.shake = 0; // nothing left frozen behind the menu
+    cancelCharge();
+    if (S.fb.state !== 'idle') { S.fb.state = 'idle'; S.fb.rings = []; }
     if (S.wave === WAVES.length - 1) return win();
     S.mode = 'upgrade';
     mouse.down = false;
@@ -1039,6 +1162,8 @@ const Level = (() => {
   // Overrun: retry the same wave at full health, keeping your upgrades.
   function overrun() {
     S.mode = 'over';
+    cancelCharge();
+    if (S.fb.state !== 'idle') { S.fb.state = 'idle'; S.fb.rings = []; }
     mouse.down = false;
     ui.endTitle.textContent = 'Overrun';
     ui.endText.textContent = `The horde got you on wave ${S.wave + 1}. Try the wave again: you keep your upgrades.`;
@@ -1086,8 +1211,9 @@ const Level = (() => {
     // Movement (WASD), kept inside the arena
     let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), my = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0);
     if (mx && my) { mx *= Math.SQRT1_2; my *= Math.SQRT1_2; }
-    p.x = Math.min(W - 16, Math.max(16, p.x + mx * p.speed * dt));
-    p.y = Math.min(H - 16, Math.max(16, p.y + my * p.speed * dt));
+    const slow = ['charging', 'full', 'windup'].includes(S.fb.state) ? 0.55 : 1; // charging slows you down
+    p.x = Math.min(W - 16, Math.max(16, p.x + mx * p.speed * slow * dt));
+    p.y = Math.min(H - 16, Math.max(16, p.y + my * p.speed * slow * dt));
     p.aim = Math.atan2(mouse.y - p.y, mouse.x - p.x);
     p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
 
@@ -1096,7 +1222,8 @@ const Level = (() => {
       S.reloading -= dt;
       if (S.reloading <= 0) { S.reloading = 0; S.ammo = clipSize(); Sound.note(68, 0, 0.15, 0.2); }
     }
-    if (mouse.down && S.fireCool <= 0) attack();
+    updateFeedback(dt);
+    if (mouse.down && S.fireCool <= 0 && slow === 1) attack();
 
     // Spawning
     S.spawnIn -= dt;
@@ -1115,8 +1242,9 @@ const Level = (() => {
     for (const z of S.zombies) {
       const t = ZOMBIES[z.type];
       const dx = p.x - z.x, dy = p.y - z.y, d = Math.hypot(dx, dy) || 1;
-      let dir = 1;
-      if (t.range) dir = d < t.range - 30 ? -0.6 : d > t.range + 20 ? 1 : 0;
+      z.stun = Math.max(0, (z.stun || 0) - dt);
+      let dir = z.stun > 0 ? 0 : 1; // staggered by the feedback blast
+      if (t.range && !z.stun) dir = d < t.range - 30 ? -0.6 : d > t.range + 20 ? 1 : 0;
       z.x += (dx / d) * t.speed * dir * dt;
       z.y += (dy / d) * t.speed * dir * dt;
       for (const o of S.zombies) {
@@ -1192,8 +1320,12 @@ const Level = (() => {
     ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
 
     // Spawners: speaker stacks in the corners
-    SPAWNERS.forEach(([x, y], i) => {
-      const g = S.spawnerGlow[i];
+    const level = S.fb ? fbLevel() : 0;
+    const windup = S.fb && S.fb.state === 'windup' ? 1 - S.fb.t / FEEDBACK.windup : 0;
+    SPAWNERS.forEach(([sx, sy], i) => {
+      const g = Math.max(S.spawnerGlow[i], level * 0.6 + windup * 0.5);
+      const jig = level * 2 + windup * 4; // the stacks shake as the feedback builds
+      const x = sx + rand(-jig, jig), y = sy + rand(-jig, jig);
       ctx.fillStyle = '#211e28'; ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 2;
       roundRect(x - 26, y - 30, 52, 60, 6); ctx.fill(); ctx.stroke();
       for (const cy of [y - 13, y + 13]) {
@@ -1203,6 +1335,8 @@ const Level = (() => {
         ctx.shadowBlur = 0;
       }
     });
+
+    drawRings();
 
     // Spitter notes
     for (const sp of S.spits) {
@@ -1274,8 +1408,75 @@ const Level = (() => {
       rim.addColorStop(0, 'rgba(255, 40, 70, 0)'); rim.addColorStop(1, `rgba(255, 40, 70, ${0.6 * k})`);
       ctx.fillStyle = rim; ctx.fillRect(0, 0, W, H);
     }
+    drawFeedbackScreen();
     drawHud();
     if (S.mode === 'fight') drawCrosshair();
+  }
+
+  // The shockwaves: a bright front with colour fringes, and the picture
+  // behind it torn and pushed outwards, like the air is distorting.
+  function drawRings() {
+    if (!S.fb || S.fb.state !== 'blast') return;
+    for (const ring of S.fb.rings) {
+      if (ring.r > RING_END) continue;
+      const fade = Math.max(0, 1 - ring.r / RING_END);
+      // Distortion trailing behind the front
+      for (let i = 0; i < 26; i++) {
+        const a = rand(0, Math.PI * 2), back = rand(8, 70);
+        const rr = ring.r - back;
+        if (rr <= 0) continue;
+        const x = ring.x + Math.cos(a) * rr, y = ring.y + Math.sin(a) * rr;
+        if (x < 0 || y < 0 || x > W - 40 || y > H - 16) continue;
+        const push = (1 - back / 70) * 9;
+        ctx.drawImage(canvas, x, y, 40, 14, x + Math.cos(a) * push, y + Math.sin(a) * push, 40, 14);
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter'; // where rings cross in the middle, they add up
+      const grad = ctx.createRadialGradient(ring.x, ring.y, Math.max(0, ring.r - 60), ring.x, ring.y, ring.r);
+      grad.addColorStop(0, 'rgba(154, 127, 224, 0)');
+      grad.addColorStop(1, `rgba(154, 127, 224, ${0.22 * fade})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2); ctx.fill();
+      for (const [off, color, width] of [[4, `rgba(255, 93, 122, ${0.5 * fade})`, 4], [-4, `rgba(127, 224, 200, ${0.45 * fade})`, 4], [0, `rgba(240, 235, 255, ${0.9 * fade})`, 6], [-22, `rgba(200, 184, 255, ${0.35 * fade})`, 3], [-44, `rgba(200, 184, 255, ${0.18 * fade})`, 2]]) {
+        if (ring.r + off <= 0) continue;
+        ctx.strokeStyle = color; ctx.lineWidth = width;
+        ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = off === 0 ? 18 : 0;
+        ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.r + off, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Charging: the edges hum and glitch, and a bar fills in the middle.
+  function drawFeedbackScreen() {
+    if (!S.fb) return;
+    const f = S.fb, level = fbLevel();
+    if (level > 0 || f.state === 'windup') {
+      const pulse = 0.75 + 0.25 * Math.sin(S.time * (f.state === 'charging' ? 10 : 22));
+      const k = f.state === 'windup' ? 1 : level;
+      const edge = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62);
+      edge.addColorStop(0, 'rgba(200, 184, 255, 0)');
+      edge.addColorStop(1, `rgba(200, 184, 255, ${0.5 * k * pulse})`);
+      ctx.fillStyle = edge; ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < Math.round(3 + k * 10); i++) {
+        const h = rand(2, 7), y = Math.random() < 0.5 ? rand(0, 50 * k) : rand(H - 50 * k, H - h);
+        ctx.drawImage(canvas, 0, y, W, h, rand(-8, 8) * k, y, W, h);
+      }
+    }
+    if (f.flash > 0) { ctx.fillStyle = `rgba(240, 235, 255, ${f.flash * 2})`; ctx.fillRect(0, 0, W, H); }
+    if (f.state === 'charging' || f.state === 'full') {
+      const bw = 280, bx = W / 2 - bw / 2, by = H * 0.3;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#E6E1EC'; ctx.font = '600 16px Oswald, sans-serif';
+      ctx.fillText(f.state === 'full' ? 'RELEASE E' : 'CHARGING FEEDBACK', W / 2, by - 12);
+      ctx.fillStyle = '#26232d'; roundRect(bx, by, bw, 14, 7); ctx.fill();
+      const bar = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      bar.addColorStop(0, '#9A7FE0'); bar.addColorStop(1, f.state === 'full' ? '#ffffff' : '#C8B8FF');
+      ctx.fillStyle = bar;
+      ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = f.state === 'full' ? 10 + 10 * Math.sin(S.time * 16) : 6;
+      roundRect(bx, by, bw * level, 14, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
   }
 
   function drawPlayer(p) {
@@ -1292,9 +1493,13 @@ const Level = (() => {
     ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#C8B8FF'; ctx.lineWidth = 4; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0, 2, 13, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-    ctx.fillStyle = '#9A7FE0';
-    roundRect(-17, -2, 7, 12, 3); ctx.fill();
-    roundRect(10, -2, 7, 12, 3); ctx.fill();
+    const ear = S.fb && defended();
+    ctx.fillStyle = ear ? '#E2D9FF' : '#9A7FE0';
+    if (ear) { ctx.shadowColor = '#E2D9FF'; ctx.shadowBlur = 12; }
+    // Ear defenders: bigger, padded cups while the feedback is going
+    roundRect(ear ? -20 : -17, ear ? -5 : -2, ear ? 10 : 7, ear ? 17 : 12, 4); ctx.fill();
+    roundRect(10, ear ? -5 : -2, ear ? 10 : 7, ear ? 17 : 12, 4); ctx.fill();
+    ctx.shadowBlur = 0;
     ctx.fillStyle = '#E2D9FF';
     ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(5, -15); ctx.lineTo(-5, -15); ctx.closePath(); ctx.fill();
     ctx.restore();
@@ -1326,6 +1531,19 @@ const Level = (() => {
       }
       ctx.textAlign = 'left'; ctx.fillStyle = '#9A93A3'; ctx.font = '500 11px Oswald, sans-serif';
       ctx.fillText(S.reloading > 0 ? 'RELOADING' : S.weapon === 'bass' ? 'WAVES' : 'NOTES', 16, 44);
+    }
+    if (S.weapon === 'mic') {
+      const f = S.fb, ready = f.cool <= 0 && f.state === 'idle';
+      ctx.textAlign = 'left'; ctx.font = '500 11px Oswald, sans-serif';
+      ctx.fillStyle = ready ? '#E2D9FF' : '#9A93A3';
+      ctx.fillText('FEEDBACK', 16, 44);
+      ctx.fillStyle = '#26232d'; roundRect(74, 36, 120, 8, 4); ctx.fill();
+      ctx.fillStyle = ready ? '#E2D9FF' : '#5E3E84';
+      if (ready) { ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 8 + 6 * Math.sin(S.time * 4); }
+      roundRect(74, 36, 120 * (1 - f.cool / FEEDBACK.cooldown), 8, 4); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = ready ? '#E2D9FF' : '#9A93A3';
+      ctx.fillText(ready ? 'READY · HOLD E' : f.state !== 'idle' ? 'IN USE' : formatTime(f.cool), 202, 44);
     }
     if (S.weapon) {
       ctx.textAlign = 'right';

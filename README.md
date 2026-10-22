@@ -105,6 +105,13 @@ finale, set `BEATMATCH = false` near the top of `src/embeds/level-eflat.html` an
 Pick a weapon (Arpeggiator, Sub Bass or Mic Swing), then survive 5 waves. WASD to move, aim with the
 mouse, left click (or hold) to attack. Pick an upgrade between waves; if you're overrun, retry the wave.
 
+**Mic Swing special, Feedback:** hold E to charge (ear defenders go on, you move slower and can't swing),
+release when the bar is full, and a second later shockwaves ring out of all four speaker stacks. Each ring
+hits every zombie once for 14% of its health plus a little (raised by Louder), staggering and pushing it
+back, so walkers and runners drop while brutes survive badly hurt. Letting go early cancels it for free.
+Ready at the start, then a 2 minute cooldown that carries across waves. The numbers are in `FEEDBACK`
+near the top of `src/embeds/level-aflat.html`.
+
 ## Level 8: Chord Progression
 
 **Files to update in Wix**
