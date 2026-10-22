@@ -88,6 +88,10 @@ try {
     out.violetLoop = made.at(-1).loop;
     out.violetOscs = oscs;
     red.stop(); shifted.stop(); violet.stop();
+    // A laser stopped before it went live (resolved on that exact frame) stays silent.
+    const count = made.length;
+    const early = Sound.laser('red', 54, 0.1); early.stop(); early.live();
+    out.lateLoops = made.slice(count).filter((x) => x.loop).length;
     a.createBufferSource = orig; a.createOscillator = origOsc;
     return out;
   });
@@ -97,6 +101,7 @@ try {
   assert.ok(log.trimmed, 'the loop is trimmed');
   assert.equal(log.oscs, 0, 'no synth while red samples exist');
   assert.ok(Math.abs(log.fRate - Math.pow(2, -1 / 12)) < 1e-6, 'F shifts the F♯ beam down a semitone');
+  assert.equal(log.lateLoops, 0, 'a stopped laser never starts its loop');
   assert.equal(log.violetSources, 3, 'violet: charge, hit, beam');
   assert.ok(log.violetLoop, 'the violet beam loops');
   assert.equal(log.violetOscs, 0, 'no synth left in the lasers');

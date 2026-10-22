@@ -469,17 +469,17 @@ const Sound = (() => {
     // With no laser samples at all, the synth tritone carries straight through.
     if (!chargeParts) { const held = synth(); return { live() {}, stop() { held.forEach((v) => v.stop()); } }; }
     parts.push(...chargeParts);
-    let isLive = false;
+    let isLive = false, stopped = false;
     return {
       live() {
-        if (isLive) return;
+        if (isLive || stopped) return; // a laser stopped already never comes back on
         isLive = true;
         chargeParts.forEach((v) => v.stop(0.04));
         if (hit) parts.push(playBuffer(hit, { volume: LASER_GAIN }));
         if (loops) { const n = nearestIn(loops, root); parts.push(playBuffer(n.buf, { rate: n.rate, loop: true, volume: LASER_GAIN })); }
         else parts.push(...synth());
       },
-      stop() { parts.forEach((v) => v.stop()); },
+      stop() { stopped = true; parts.forEach((v) => v.stop()); },
     };
   }
 
@@ -1055,6 +1055,7 @@ const Level = (() => {
   }
 
   function begin() {
+    if (S) S.lasers.forEach(endLaser); // nothing carries over into a new fight
     newState();
     S.running = true;
     ui.end.classList.remove('show');
@@ -1416,6 +1417,7 @@ const Level = (() => {
     // already moving, then turns live and carries on from that point at the
     // same speed. k < 0 is the preview, 0 to 1 the live sweep (a0 to a1).
     for (const l of S.lasers) {
+      if (l.gone) continue; // resolved or cleared earlier this frame
       l.e += dt;
       const k = (l.e - LASER_WARN) / l.dur;
       const along = l.reverse ? (k < 0.5 ? k * 2 : (1 - k) * 2) : k; // some sweeps turn back halfway

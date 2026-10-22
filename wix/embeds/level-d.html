@@ -486,17 +486,17 @@ const Sound = (() => {
     // With no laser samples at all, the synth tritone carries straight through.
     if (!chargeParts) { const held = synth(); return { live() {}, stop() { held.forEach((v) => v.stop()); } }; }
     parts.push(...chargeParts);
-    let isLive = false;
+    let isLive = false, stopped = false;
     return {
       live() {
-        if (isLive) return;
+        if (isLive || stopped) return; // a laser stopped already never comes back on
         isLive = true;
         chargeParts.forEach((v) => v.stop(0.04));
         if (hit) parts.push(playBuffer(hit, { volume: LASER_GAIN }));
         if (loops) { const n = nearestIn(loops, root); parts.push(playBuffer(n.buf, { rate: n.rate, loop: true, volume: LASER_GAIN })); }
         else parts.push(...synth());
       },
-      stop() { parts.forEach((v) => v.stop()); },
+      stop() { stopped = true; parts.forEach((v) => v.stop()); },
     };
   }
 

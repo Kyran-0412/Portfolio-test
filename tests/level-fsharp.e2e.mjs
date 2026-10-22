@@ -80,6 +80,22 @@ try {
   assert.ok(hp0 - (await S(() => window.__boss.boss.hp)) > 1.5, 'resolving hurts the boss');
   console.log('✓ violet laser warns, sweeps, and A + D resolves it');
 
+  // Resolving a laser on the very frame its beam goes live leaves no sound running.
+  await calm();
+  const stuck = await S(() => {
+    const s = window.__boss;
+    startLasers();
+    const l = s.lasers[0];
+    l.e = 1.2 - 0.001; // one frame from going live
+    let loops = 0;
+    l.sound = [{ live() { loops++; }, stop() {} }];
+    resolveLasers();  // resolved, still in the list until the frame ends
+    update(1 / 60);   // the frame where it would have gone live
+    return loops;
+  });
+  assert.equal(stuck, 0, 'a resolved laser never goes live');
+  console.log('✓ a laser resolved on the frame it goes live stays silent');
+
   // A laser hits you, unless you're mid-dash.
   await calm();
   await laserOnPlayer(true);
