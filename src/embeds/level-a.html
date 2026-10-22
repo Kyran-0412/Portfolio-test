@@ -40,7 +40,8 @@
   const W = 900, H = 400;
   const ROOT = 57; // A3
   // The boss's own synth (your attacks stay on the piano). Long, washy release.
-  const BOSS = Sound.instrument('feedback', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
+  const BOSS = Sound.instrument('feedback', { release: 1.2, gain: 1.35 }); // gain: its level next to the piano
+  const BOSS_NOTE = 0.9, BOSS_CHORD = 1.1; // how long its notes and triads hold before the release
   // Backing: a drone in F♯ minor (A's relative minor) under the whole fight.
   const DRONE = 'feedback-drone';
   let drone = null;
@@ -120,6 +121,7 @@
           </div>
         </div>`;
       Sound.preload(['feedback', DRONE]);
+      Sound.reverb({ mix: 0.22, seconds: 2.2 }); // a little space on the boss synth and your piano
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -311,11 +313,11 @@
     };
     if (w.kind === 'note') {
       launch(w.midi, base, 'note');
-      BOSS.note(w.midi, 0, 0.45, 0.4);
+      BOSS.note(w.midi, 0, BOSS_NOTE, 0.4);
     } else {
       const spread = w.triad.major ? 0.3 : 0.14; // major chords spread wide, minor narrow
       w.triad.notes.forEach((m, i) => launch(m, base + (i - 1) * spread, 'chord'));
-      BOSS.chord(w.triad.notes, 0, 0.6, 0.5);
+      BOSS.chord(w.triad.notes, 0, BOSS_CHORD, 0.5);
     }
   }
 

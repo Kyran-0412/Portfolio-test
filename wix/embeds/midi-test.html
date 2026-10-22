@@ -161,11 +161,30 @@ const Sound = (() => {
   let pending = 0;
   let onStatus = () => {};
 
+  // An optional shared reverb for notes (piano and instruments). A level
+  // turns it on with Sound.reverb({ mix, seconds }); the rest stay dry.
+  let reverbIn = null, reverbWanted = null;
+  function buildReverb({ mix = 0.22, seconds = 2.2 } = {}) {
+    const len = Math.round(ctx.sampleRate * seconds), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      const pre = Math.round(ctx.sampleRate * 0.015); // a short gap before the tail
+      for (let i = pre; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    }
+    const conv = ctx.createConvolver(), wet = ctx.createGain();
+    conv.buffer = ir;
+    wet.gain.value = mix;
+    reverbIn = ctx.createGain();
+    reverbIn.connect(conv).connect(wet).connect(out);
+  }
+  const toReverb = (node) => { if (reverbIn) node.connect(reverbIn); };
+
   function audio() {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       out = ctx.createDynamicsCompressor();
       out.connect(ctx.destination);
+      if (reverbWanted) buildReverb(reverbWanted);
       Object.entries(SAMPLES).forEach(([midi, url]) => load(url, (b) => { buffers[midi] = b; }));
       wanted.forEach(loadNamed);
       if (!pending) finishLoad();
@@ -272,6 +291,7 @@ const Sound = (() => {
     const a = audio();
     const gain = a.createGain();
     gain.connect(out);
+    toReverb(gain);
     const sources = [];
 
     const sample = synthOnly ? null : nearestSample(midi);
@@ -380,6 +400,7 @@ const Sound = (() => {
     const master = a.createGain();
     master.gain.value = volume;
     master.connect(out);
+    toReverb(master);
     const srcs = [];
     const play = (offset, at, fade) => {
       const src = a.createBufferSource(), g = a.createGain();
@@ -500,6 +521,8 @@ const Sound = (() => {
 
   return {
     unlock: audio,
+    reverb(options) { reverbWanted = options || {}; if (ctx && !reverbIn) buildReverb(reverbWanted); },
+    get hasReverb() { return !!reverbIn; },
     laser,
     instrument,
     track,

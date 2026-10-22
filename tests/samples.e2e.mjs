@@ -72,6 +72,7 @@ try {
   // Lasers: only the fights load them. Charge, then hit + a pitched beam loop.
   ({ game } = await play('preview', 'ok'));
   assert.equal(await page.frames().find((f) => f.url().includes('level-c.html')).evaluate(() => Sound.has('red-beam')), false, 'the Tutorial skips laser sounds');
+  assert.equal(await page.frames().find((f) => f.url().includes('level-c.html')).evaluate(() => Sound.hasReverb), false, 'the Tutorial stays dry');
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E', 'B'] })));
   await page.goto(`${base}/dev/sim.html?page=level-fsharp`);
   const boss = page.frameLocator('#gameEmbed');
@@ -130,7 +131,8 @@ try {
   await ff.waitForFunction(() => Sound.has('feedback-drone'));
   await fb.locator('#fightBtn').click();
   await ff.waitForFunction(() => window.__drone() !== null, null, { timeout: 3000 });
-  console.log('✓ the drone starts with the fight');
+  assert.equal(await ff.evaluate(() => Sound.hasReverb), true, 'Feedback has reverb');
+  console.log('✓ the drone starts with the fight, with reverb on the notes');
   const held = await ff.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a);
