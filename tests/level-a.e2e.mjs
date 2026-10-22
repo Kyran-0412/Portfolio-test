@@ -175,7 +175,7 @@ try {
   const track = await S(async () => {
     const s = window.__boss;
     s.running = true; s.transition = null; s.player.x = 200;
-    s.warnings = [{ t: 0.8, total: 0.8, tx: 200, kind: 'note', midi: 57 }];
+    s.warnings = [{ t: 0.8, total: 0.8, tx: 200, kind: 'note', midi: 57, miss: 0 }];
     const w = s.warnings[0];
     s.player.x = 700; // the player moves away
     await new Promise((r) => setTimeout(r, 250));
@@ -184,7 +184,7 @@ try {
     const n = s.notes.at(-1);
     return { mid, fired: !!n, dir: n && Math.atan2(n.vy, n.vx), vx: n && n.vx, vy: n && n.vy };
   });
-  assert.ok(track.mid > 220 && track.mid < 600, `the line follows but lags behind (${Math.round(track.mid)})`);
+  assert.ok(track.mid > 210 && track.mid < 500, `the line follows but lags behind (${Math.round(track.mid)})`);
   assert.ok(track.fired, 'it fired');
   const later = await S(() => { const n = window.__boss.notes.at(-1); return n && Math.atan2(n.vy, n.vx); });
   assert.ok(later === null || Math.abs(later - track.dir) < 1e-9, 'the shot flies straight');

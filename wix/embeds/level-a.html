@@ -1117,7 +1117,8 @@ const Level = (() => {
   const CLIP_STUN = 2;        // seconds you're stunned after clipping
   // The aim line follows you while it warns, lagging behind, then the shot
   // flies straight from wherever it was pointing when it fired.
-  const TRACK = { on: true, follow: 3.5, maxSpeed: 300 }; // follow: how quickly it catches up; maxSpeed: px/s
+  // follow: how quickly it catches up; maxSpeed: px/s; miss: each shot aims up to this far to one side.
+  const TRACK = { on: true, follow: 2.2, maxSpeed: 220, miss: 35 };
   const CLIP_RESET = 70;      // your volume meter drops to this after clipping
   const NOTE_SPEED = 1.25;    // the boss's single notes fly this much faster than its chords
   const CANCEL_DAMAGE = 3;    // cancelling a note reflects some back
@@ -1573,7 +1574,8 @@ const Level = (() => {
     S.warnings.forEach((w) => {
       w.t -= dt;
       if (TRACK.on && w.tx !== undefined) {
-        const want = aimX() - w.tx;
+        if (w.miss === undefined) w.miss = rand(-TRACK.miss, TRACK.miss);
+        const want = aimX() + w.miss - w.tx;
         const step = want * (1 - Math.exp(-TRACK.follow * dt));
         w.tx += Math.sign(step) * Math.min(Math.abs(step), TRACK.maxSpeed * dt);
       }
