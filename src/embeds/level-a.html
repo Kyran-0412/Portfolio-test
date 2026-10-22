@@ -41,7 +41,7 @@
   const ROOT = 57; // A3
   // The boss's own synth (your attacks stay on the piano). Long, washy release.
   const BOSS = Sound.instrument('feedback', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
-  // Backing: a drone in A under the whole fight.
+  // Backing: a drone in F♯ minor (A's relative minor) under the whole fight.
   const DRONE = 'feedback-drone';
   let drone = null;
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s);
