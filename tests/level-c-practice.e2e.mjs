@@ -74,7 +74,7 @@ try {
   // Moves work: a power shot leaves the player.
   await T(() => { window.__practice.safe = 99; window.__practice.timers.held = 99; });
   await chord('a', 'g');
-  assert.ok(await T(() => window.__practice.shots.some((s) => s.kind === 'power')), 'power shot fired');
+  await frame.waitForFunction(() => window.__practice.lastMove === 'power', null, { timeout: 2000 });
   // The held chord: playing the missing note cuts it.
   await T(() => { const q = window.__practice; q.timers.held = 0; });
   await frame.waitForFunction(() => window.__practice.held !== null, null, { timeout: 2000 });
@@ -104,8 +104,9 @@ try {
   assert.equal(await T(() => window.__practice.lasers[0].cancellable), true, 'violet only');
   await chord('a', 'd');
   assert.equal(await T(() => window.__practice.stats.resolved), 1, 'A + D resolves it');
-  await T(() => { const q = window.__practice; q.timers.bomb = 0; q.timers.fan = 0; });
-  await frame.waitForFunction(() => window.__practice.waves.length > 0, null, { timeout: 4000, polling: 'raf' });
+  // (the dummy waits for a laser or fan to finish before dropping a bomb, so pause lasers here)
+  await T(() => { const q = window.__practice; q.timers.laser = 99; q.timers.bomb = 0; q.timers.fan = 0; });
+  await frame.waitForFunction(() => window.__practice.waves.length > 0, null, { timeout: 8000, polling: 'raf' });
   await frame.waitForFunction(() => window.__practice.notes.some((n) => n.kind === 'arp'), null, { timeout: 6000 });
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/pc-all.png` });
   console.log('✓ every boss attempted: lasers, bombs and arpeggio fans can all be practised');

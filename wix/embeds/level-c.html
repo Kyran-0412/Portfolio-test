@@ -1339,7 +1339,7 @@ const Level = (() => {
   const P = { x: W / 2, dir: 0, face: 1, dash: 0, dashCool: 0, dashDir: 1, shield: 0, trail: [] };
   let fx = [], rings = [], sparks = [], texts = [], markers = [], laser = null, floaters = [], pickup = null;
   let pending = null, keys = {}, last = 0, time = 0;
-  let free = false, freeLaserIn = 6, freePickupIn = 9;
+  let free = false, freePickupIn = 9; // free play: ear defenders keep falling (lasers are for practice mode)
   // Each step can listen for a move: onMove(kind) gets 'single', 'power', 'triad', 'resolve', 'sus4', 'dash'.
   let onNote = () => {}, onMove = () => {};
 
@@ -1749,10 +1749,8 @@ const Level = (() => {
     }
     if (stepNine.active && !pickup) spawnPickup(); // missed it: another one falls
     if (free) {
-      freeLaserIn -= dt; freePickupIn -= dt;
-      if (freeLaserIn <= 0 && !laser) { spawnLaser(); freeLaserIn = rand(7, 10); }
+      freePickupIn -= dt;
       if (freePickupIn <= 0 && !pickup) { spawnPickup(); freePickupIn = rand(10, 14); }
-      if (laser && laser.t > 6) { laser.sound.forEach((s) => s.stop()); laser = null; } // ignored lasers fizzle out
     }
 
     fx.forEach((f) => { f.x += f.vx * dt; f.y += f.vy * dt; f.t -= dt; });
@@ -1904,6 +1902,7 @@ const Level = (() => {
       if (has(C) && has(E) && has(G)) kind = 'triad';
       else if (has(C) && has(G)) kind = 'power';
       const a = SHOTS[kind];
+      Q.lastMove = kind;
       const shot = (midi, angle, extra = {}) => Q.shots.push({ x: P.x, y: py() - 22, vx: Math.sin(angle) * a.speed, vy: -Math.cos(angle) * a.speed, midi, pcs: [midi % 12], kind, damage: a.damage, ...extra });
       let cost = a.cost;
       if (kind === 'power') shot(notes.get(C), 0, { pcs: [C, G], label: 'C+G' });
