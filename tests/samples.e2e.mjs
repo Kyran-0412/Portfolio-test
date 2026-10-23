@@ -190,6 +190,31 @@ try {
   assert.ok(fan.has && fan.made === 1 && fan.rate === 1, `a fan note plays the arp's C5 as recorded (${JSON.stringify(fan)})`);
   console.log('✓ the Final Boss’s arpeggio fans use the shared arp');
 
+  // Bombs: the drop while it falls; then the impact and a pitched rolling root
+  // together on landing; the roll fades once both waves are gone.
+  const bomb = await cf.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    const s = window.__boss;
+    s.warnings = []; s.waves = []; s.player.x = 800; s.player.safe = 99;
+    useKey('F#'); // ROOT F♯3: the roll is F♯2, recorded
+    startGround();
+    const afterDrop = made.length;
+    const w = s.warnings.find((x) => x.kind === 'ground');
+    slam(w); s.warnings = [];
+    const roll = made.find((x) => x.loop);
+    const out = { afterDrop, total: made.length, rollRate: roll && roll.playbackRate.value, rolls: s.rolls.length };
+    s.waves = []; updateRolls(); out.rollsAfter = s.rolls.length;
+    a.createBufferSource = orig;
+    return out;
+  });
+  assert.equal(bomb.afterDrop, 1, 'the drop plays as it falls');
+  assert.ok(bomb.total >= 3, 'impact + rolling root on landing (plus the power chord)');
+  assert.equal(bomb.rollRate, 1, 'in F♯ the roll is the F♯2 loop as recorded');
+  assert.deepEqual([bomb.rolls, bomb.rollsAfter], [1, 0], 'the roll stops when its waves are gone');
+  console.log('✓ bombs: drop, then impact + pitched rolling root together; the roll ends with its waves');
+
   // The drone: the key's relative minor, from the nearest of the four.
   const drones = await cf.evaluate(() => {
     const a = Sound.unlock(), made = [];

@@ -292,6 +292,19 @@ const Sound = (() => {
     },
   });
   // Backing drones: seamless loops, one per fight.
+  // The Final Boss's power-chord bombs: the fall, the impact, and a rolling
+  // root note (a seamless loop) under the ground waves, pitched to the key.
+  Object.assign(SOUNDS, {
+    'bomb-drop': 'https://static.wixstatic.com/mp3/281301_e9c0d039b3344886b37cf9f544d6d436.wav',
+    'bomb-impact': 'https://static.wixstatic.com/mp3/281301_f169becc31a84429a87f00ab560c8e9c.wav',
+    'wave-roll': {
+      36: 'https://static.wixstatic.com/mp3/281301_403f113b8df54543bdcd4f0850a57326.wav', // C2
+      39: 'https://static.wixstatic.com/mp3/281301_e94225ed97fe44149a9f5032ca237030.wav', // E♭2
+      42: 'https://static.wixstatic.com/mp3/281301_f5d8153d54cd4fcf83f2d8afbfe3a548.wav', // F♯2
+      45: 'https://static.wixstatic.com/mp3/281301_67e59f77110240b4a7eb5fddb9e1aab4.wav', // A2
+    },
+  });
+  const SFX_GAIN = 0.42; // one-shot effects like the bombs: punchy, under the lasers
   SOUNDS['circle-drone'] = { // minor drones, shifted from the nearest one into each key's relative minor
     48: 'https://static.wixstatic.com/mp3/281301_c61812d86634410482b8fae1a6cc3e05.wav', // C minor
     51: 'https://static.wixstatic.com/mp3/281301_e83debe4e7df44639c509240c71c396d.wav', // E♭ minor
@@ -782,6 +795,15 @@ const Sound = (() => {
     instrument,
     track,
     trackNear,
+    // A one-shot effect as recorded; null if it isn't loaded.
+    sfx(name, volume = SFX_GAIN) { const b = named[name]; return b && b.getChannelData ? playBuffer(b, { volume }) : null; },
+    // A seamless loop from a pitched set, shifted to `midi`; null if it isn't loaded.
+    loopNear(name, midi, volume = SFX_GAIN) {
+      const set = named[name];
+      if (!set || set.getChannelData || !Object.keys(set).length) return null;
+      const n = nearestIn(set, midi);
+      return playBuffer(n.buf, { rate: n.rate, loop: true, volume });
+    },
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],
@@ -1404,7 +1426,7 @@ const Level = (() => {
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
-      Sound.preload(['circle', 'circle-drone', 'arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.preload(['circle', 'circle-drone', 'arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam', 'bomb-drop', 'bomb-impact', 'wave-roll']);
       Sound.reverb({ mix: 0.32, seconds: 2.2, piano: 1.7, instruments: 1 }); // as in the other fights
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
@@ -1432,7 +1454,7 @@ const Level = (() => {
       unlocked: new Set(), key: 'C',
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
       attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true, firstRed: true,
-      arps: [], finale: false, shards: [],
+      arps: [], finale: false, shards: [], rolls: [],
       banner: null,
     };
     window.__boss = S; // for automatic tests
@@ -1641,17 +1663,36 @@ const Level = (() => {
   // into two ground waves rolling out both ways. Dash through or sus4 them.
   function startGround() {
     const x = Math.min(W - 60, Math.max(60, aimX()));
-    S.warnings.push({ t: 1.1, total: 1.1, kind: 'ground', x, fromX: S.boss.x });
+    S.warnings.push({ t: 1.1, total: 1.1, kind: 'ground', x, fromX: S.boss.x, drop: Sound.sfx('bomb-drop') });
     if (S.firstBomb) {
       S.firstBomb = false;
       S.banner = { text: 'Power-chord bomb! Dash through the waves, or sus4 them.', t: 2.6 };
     }
   }
   function slam(w) {
-    S.waves.push({ x: w.x, dir: -1 }, { x: w.x, dir: 1 });
-    Sound.chord([ROOT - 12, ROOT - 5], 0, 0.7, 0.55);
-    Sound.hit();
+    // The impact and the rolling root start together, layered, as the bomb lands.
+    if (w.drop) w.drop.stop(0.03);
+    const roll = { sound: Sound.loopNear('wave-roll', ROOT - 12) };
+    S.rolls.push(roll);
+    S.waves.push({ x: w.x, dir: -1, roll }, { x: w.x, dir: 1, roll });
+    const impact = Sound.sfx('bomb-impact');
+    BOSS.chord([ROOT, ROOT + 7], 0, 0.7, 0.5); // the power chord, above the rumble
+    if (!impact) Sound.hit();
     S.shake = Math.max(S.shake, 0.25);
+  }
+  // The roll fades once both of its waves are gone (off screen, hit you, or cleared).
+  function updateRolls() {
+    S.rolls = S.rolls.filter((r) => {
+      if (S.waves.some((w) => w.roll === r)) return true;
+      if (r.sound) r.sound.stop(0.4);
+      return false;
+    });
+  }
+  // Silences every bomb sound still going (phase changes, the finale, the end).
+  function stopBombs() {
+    S.warnings.forEach((w) => w.drop && w.drop.stop(0.1));
+    S.rolls.forEach((r) => r.sound && r.sound.stop(0.4));
+    S.rolls = [];
   }
 
   // ---------- Damage ----------
@@ -1673,6 +1714,7 @@ const Level = (() => {
   // At zero health the boss stops attacking and waits for F major.
   function startFinale() {
     S.finale = true;
+    stopBombs();
     S.warnings = []; S.arps = []; S.waves = [];
     S.lasers.forEach(endLaser);
     for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#C8B8FF');
@@ -1687,6 +1729,7 @@ const Level = (() => {
     const key = KEYS[next - 1];
     S.phase = next;
     S.transition = { t: BREAK, next, key, index: next - 1, burst: false };
+    stopBombs();
     S.warnings = [];
     S.lasers.forEach(endLaser);
     for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#8fc4ff');
@@ -1773,6 +1816,7 @@ const Level = (() => {
 
   // ---------- Endings ----------
   function finish(title, text, buttons, hint) {
+    stopBombs();
     stopDrone();
     S.running = false;
     S.lasers.forEach(endLaser);
@@ -1805,6 +1849,7 @@ const Level = (() => {
     S.over = true;
     S.running = false;
     S.lasers.forEach(endLaser);
+    stopBombs();
     S.notes = []; S.warnings = []; S.waves = [];
     for (let i = 0; i < 40; i++) spark(S.boss.x, S.boss.y + 20, i % 2 ? '#C8B8FF' : '#9A7FE0');
     S.finale = false;
@@ -1923,6 +1968,7 @@ const Level = (() => {
       if (!w.gone && Math.abs(w.x - p.x) < 16) { w.gone = true; hurt(); if (!S.running) return; }
     }
     S.waves = S.waves.filter((w) => !w.gone && w.x > -20 && w.x < W + 20);
+    updateRolls();
 
     S.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
     S.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });

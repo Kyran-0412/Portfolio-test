@@ -188,7 +188,7 @@
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
-      Sound.preload(['circle', 'circle-drone', 'arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.preload(['circle', 'circle-drone', 'arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam', 'bomb-drop', 'bomb-impact', 'wave-roll']);
       Sound.reverb({ mix: 0.32, seconds: 2.2, piano: 1.7, instruments: 1 }); // as in the other fights
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
@@ -216,7 +216,7 @@
       unlocked: new Set(), key: 'C',
       shots: [], notes: [], warnings: [], pickups: [], sparks: [], texts: [], lasers: [], waves: [], rings: [],
       attackIn: 1.2, laserIn: 99, groundIn: 99, arpIn: 99, pickupIn: 9, transition: null, firstLaser: true, firstBomb: true, firstRed: true,
-      arps: [], finale: false, shards: [],
+      arps: [], finale: false, shards: [], rolls: [],
       banner: null,
     };
     window.__boss = S; // for automatic tests
@@ -425,17 +425,36 @@
   // into two ground waves rolling out both ways. Dash through or sus4 them.
   function startGround() {
     const x = Math.min(W - 60, Math.max(60, aimX()));
-    S.warnings.push({ t: 1.1, total: 1.1, kind: 'ground', x, fromX: S.boss.x });
+    S.warnings.push({ t: 1.1, total: 1.1, kind: 'ground', x, fromX: S.boss.x, drop: Sound.sfx('bomb-drop') });
     if (S.firstBomb) {
       S.firstBomb = false;
       S.banner = { text: 'Power-chord bomb! Dash through the waves, or sus4 them.', t: 2.6 };
     }
   }
   function slam(w) {
-    S.waves.push({ x: w.x, dir: -1 }, { x: w.x, dir: 1 });
-    Sound.chord([ROOT - 12, ROOT - 5], 0, 0.7, 0.55);
-    Sound.hit();
+    // The impact and the rolling root start together, layered, as the bomb lands.
+    if (w.drop) w.drop.stop(0.03);
+    const roll = { sound: Sound.loopNear('wave-roll', ROOT - 12) };
+    S.rolls.push(roll);
+    S.waves.push({ x: w.x, dir: -1, roll }, { x: w.x, dir: 1, roll });
+    const impact = Sound.sfx('bomb-impact');
+    BOSS.chord([ROOT, ROOT + 7], 0, 0.7, 0.5); // the power chord, above the rumble
+    if (!impact) Sound.hit();
     S.shake = Math.max(S.shake, 0.25);
+  }
+  // The roll fades once both of its waves are gone (off screen, hit you, or cleared).
+  function updateRolls() {
+    S.rolls = S.rolls.filter((r) => {
+      if (S.waves.some((w) => w.roll === r)) return true;
+      if (r.sound) r.sound.stop(0.4);
+      return false;
+    });
+  }
+  // Silences every bomb sound still going (phase changes, the finale, the end).
+  function stopBombs() {
+    S.warnings.forEach((w) => w.drop && w.drop.stop(0.1));
+    S.rolls.forEach((r) => r.sound && r.sound.stop(0.4));
+    S.rolls = [];
   }
 
   // ---------- Damage ----------
@@ -457,6 +476,7 @@
   // At zero health the boss stops attacking and waits for F major.
   function startFinale() {
     S.finale = true;
+    stopBombs();
     S.warnings = []; S.arps = []; S.waves = [];
     S.lasers.forEach(endLaser);
     for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#C8B8FF');
@@ -471,6 +491,7 @@
     const key = KEYS[next - 1];
     S.phase = next;
     S.transition = { t: BREAK, next, key, index: next - 1, burst: false };
+    stopBombs();
     S.warnings = [];
     S.lasers.forEach(endLaser);
     for (const n of S.notes) for (let i = 0; i < 3; i++) spark(n.x, n.y, '#8fc4ff');
@@ -557,6 +578,7 @@
 
   // ---------- Endings ----------
   function finish(title, text, buttons, hint) {
+    stopBombs();
     stopDrone();
     S.running = false;
     S.lasers.forEach(endLaser);
@@ -589,6 +611,7 @@
     S.over = true;
     S.running = false;
     S.lasers.forEach(endLaser);
+    stopBombs();
     S.notes = []; S.warnings = []; S.waves = [];
     for (let i = 0; i < 40; i++) spark(S.boss.x, S.boss.y + 20, i % 2 ? '#C8B8FF' : '#9A7FE0');
     S.finale = false;
@@ -707,6 +730,7 @@
       if (!w.gone && Math.abs(w.x - p.x) < 16) { w.gone = true; hurt(); if (!S.running) return; }
     }
     S.waves = S.waves.filter((w) => !w.gone && w.x > -20 && w.x < W + 20);
+    updateRolls();
 
     S.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
     S.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });

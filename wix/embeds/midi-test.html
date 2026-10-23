@@ -180,6 +180,19 @@ const Sound = (() => {
     },
   });
   // Backing drones: seamless loops, one per fight.
+  // The Final Boss's power-chord bombs: the fall, the impact, and a rolling
+  // root note (a seamless loop) under the ground waves, pitched to the key.
+  Object.assign(SOUNDS, {
+    'bomb-drop': 'https://static.wixstatic.com/mp3/281301_e9c0d039b3344886b37cf9f544d6d436.wav',
+    'bomb-impact': 'https://static.wixstatic.com/mp3/281301_f169becc31a84429a87f00ab560c8e9c.wav',
+    'wave-roll': {
+      36: 'https://static.wixstatic.com/mp3/281301_403f113b8df54543bdcd4f0850a57326.wav', // C2
+      39: 'https://static.wixstatic.com/mp3/281301_e94225ed97fe44149a9f5032ca237030.wav', // E♭2
+      42: 'https://static.wixstatic.com/mp3/281301_f5d8153d54cd4fcf83f2d8afbfe3a548.wav', // F♯2
+      45: 'https://static.wixstatic.com/mp3/281301_67e59f77110240b4a7eb5fddb9e1aab4.wav', // A2
+    },
+  });
+  const SFX_GAIN = 0.42; // one-shot effects like the bombs: punchy, under the lasers
   SOUNDS['circle-drone'] = { // minor drones, shifted from the nearest one into each key's relative minor
     48: 'https://static.wixstatic.com/mp3/281301_c61812d86634410482b8fae1a6cc3e05.wav', // C minor
     51: 'https://static.wixstatic.com/mp3/281301_e83debe4e7df44639c509240c71c396d.wav', // E♭ minor
@@ -670,6 +683,15 @@ const Sound = (() => {
     instrument,
     track,
     trackNear,
+    // A one-shot effect as recorded; null if it isn't loaded.
+    sfx(name, volume = SFX_GAIN) { const b = named[name]; return b && b.getChannelData ? playBuffer(b, { volume }) : null; },
+    // A seamless loop from a pitched set, shifted to `midi`; null if it isn't loaded.
+    loopNear(name, midi, volume = SFX_GAIN) {
+      const set = named[name];
+      if (!set || set.getChannelData || !Object.keys(set).length) return null;
+      const n = nearestIn(set, midi);
+      return playBuffer(n.buf, { rate: n.rate, loop: true, volume });
+    },
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],
