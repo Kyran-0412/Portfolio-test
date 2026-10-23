@@ -431,13 +431,14 @@
       S.banner = { text: 'Power-chord bomb! Dash through the waves, or sus4 them.', t: 2.6 };
     }
   }
+  const BOMB_HIT = 0.6; // the impact and roll's level (the drop uses the default)
   function slam(w) {
     // The impact and the rolling root start together, layered, as the bomb lands.
     if (w.drop) w.drop.stop(0.03);
-    const roll = { sound: Sound.loopNear('wave-roll', ROOT - 12) };
+    const roll = { sound: Sound.loopNear('wave-roll', ROOT - 12, BOMB_HIT) };
     S.rolls.push(roll);
     S.waves.push({ x: w.x, dir: -1, roll }, { x: w.x, dir: 1, roll });
-    const impact = Sound.sfx('bomb-impact');
+    const impact = Sound.sfx('bomb-impact', BOMB_HIT);
     BOSS.chord([ROOT, ROOT + 7], 0, 0.7, 0.5); // the power chord, above the rumble
     if (!impact) Sound.hit();
     S.shake = Math.max(S.shake, 0.25);
