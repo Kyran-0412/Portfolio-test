@@ -41,6 +41,13 @@
   // Your special: sus4 (F♯ + B + C♯), a shockwave that clears nearby notes.
   const W = 900, H = 400;
   const ROOT = 54; // F♯3
+  // The boss's own synth (your attacks stay on the piano), and a drone in D♯ minor.
+  const BOSS = Sound.instrument('tritone', { release: 0.7 });
+  const DRONE = 'tritone-drone';
+  let drone = null;
+  function startMusic() { stopMusic(0.3); drone = Sound.track(DRONE, { fadeIn: 1.5 }); }
+  function stopMusic(fade = 1.2) { if (drone) drone.stop(fade); drone = null; }
+  window.__drone = () => drone; // for automatic tests
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // F♯ G♯ A♯ B C♯ D♯ E♯ F♯ on A–K
   const SHARP_NAMES = ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯'];
   const FLAT_NAMES = ['G♭', 'A♭', 'B♭', 'C♭', 'D♭', 'E♭', 'F', 'G♭'];
@@ -113,7 +120,8 @@
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
-      Sound.preload(['red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.preload(['tritone', DRONE, 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.reverb({ mix: 0.32, seconds: 2.2, piano: 1.7, instruments: 1 }); // as in Feedback
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -151,6 +159,7 @@
     if (S) S.lasers.forEach(endLaser); // nothing carries over into a new fight
     newState();
     S.running = true;
+    startMusic();
     ui.end.classList.remove('show');
     Level.piano.setNames(SHARP_NAMES);
     Level.piano.setEnabled(true);
@@ -257,10 +266,10 @@
       x: ox, y: oy, vx: Math.cos(base) * speed, vy: Math.sin(base) * speed,
       midi: notes[0], pcs: notes.map((m) => m % 12), notes, kind, label: ph.labels,
     });
-    if (w.kind === 'note') { launch([w.midi], 'note', ph.speed * NOTE_SPEED); Sound.note(w.midi, 0, 0.45, 0.4); return; }
+    if (w.kind === 'note') { launch([w.midi], 'note', ph.speed * NOTE_SPEED); BOSS.note(w.midi, 0, 0.45, 0.4); return; }
     // A perfect fifth: two notes as one bigger, faster shot.
     launch(w.notes, 'fifth', ph.speed * FIFTH_SPEED);
-    Sound.chord(w.notes, 0, 0.5, 0.5);
+    BOSS.chord(w.notes, 0, 0.5, 0.5);
   }
 
   // Lasers: a warning line, then a sweep from one angle to another.
@@ -399,6 +408,7 @@
   // ---------- Endings ----------
   function finish(title, text, buttons, hint) {
     S.running = false;
+    stopMusic();
     S.lasers.forEach(endLaser);
     Level.piano.setEnabled(false);
     ui.endTitle.textContent = title;
@@ -425,6 +435,7 @@
   }
 
   function win() {
+    stopMusic(2);
     S.over = true;
     S.running = false;
     S.lasers.forEach(endLaser);

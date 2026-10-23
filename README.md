@@ -32,13 +32,14 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
-## Boss synths (Feedback done)
+## Boss synths (Feedback and the Tritone done)
 
 **Files to update in Wix**
 
 | File | Where |
 | --- | --- |
 | `wix/embeds/level-a.html` | Level A page's Embed HTML box |
+| `wix/embeds/level-fsharp.html` | Level F♯ page's Embed HTML box |
 
 Each boss has its own synth for its notes, fifths, triads and held chords; your attacks stay on the
 piano. Feedback's notes are in `SOUNDS.feedback` in `src/lib/sound.js` (A3 to E♭5, every 3 semitones,

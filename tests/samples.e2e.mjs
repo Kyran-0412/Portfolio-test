@@ -80,7 +80,8 @@ try {
   await boss.locator('#startBtn').click();
   const bf = page.frames().find((f) => f.url().includes('level-fsharp.html'));
   await bf.waitForFunction(() => Sound.samples.done && Sound.has('red-beam'), null, { timeout: 5000 });
-  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 12} / ${total + 12} loaded`, 'piano + 6 red + 6 violet laser files');
+  assert.equal(await boss.locator('#sampleStatus').textContent(), `Samples: ${total + 19} / ${total + 19} loaded`, 'piano + 12 laser files + 6 Tritone notes + its drone');
+  assert.equal(await bf.evaluate(() => Sound.has('tritone') && Sound.has('tritone-drone') && Sound.hasReverb), true, 'Tritone synth, drone and reverb');
   const log = await bf.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a), origOsc = a.createOscillator.bind(a);
