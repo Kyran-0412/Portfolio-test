@@ -859,7 +859,7 @@ const Sound = (() => {
     },
     // Locked door: two dull knocks.
     locked() {
-      if (play('door-locked', { volume: 0.5 })) return;
+      if (play('door-locked', { volume: 0.38 })) return; // about 2.5 dB under where it started
       thump(0, 120, 55, 0.18, 0.5);
       noise(0, 0.08, 900, 200, 0.25);
       thump(0.11, 110, 50, 0.16, 0.35);
