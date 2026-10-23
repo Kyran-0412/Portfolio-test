@@ -1396,7 +1396,7 @@ const Level = (() => {
     S = {
       phase: 0, running: false, over: false, time: 0, flipped: false,
       boss: { x: W / 2, y: 82, hp: 100, target: W / 2, stun: 0, flash: 0, warn: 0 },
-      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0 },
+      player: { x: W / 2, y: H - 34, dash: 0, dashCool: 0, safe: 0, shield: 0, dir: 0, stun: 0, trail: [] },
       meter: 0, shake: 0, shotGap: 0, warnedClip: false, pending: null, sus4Cool: 0,
       hearts, maxHearts: hearts, hurtFlash: 0, heartPop: 0,
       unlocked: new Set(UNLOCKS[0]),
@@ -1728,6 +1728,9 @@ const Level = (() => {
     const speed = p.dash > 0 ? 1300 : 380;
     const dir = p.dash > 0 ? p.dashDir : p.dir;
     p.x = Math.min(W - 24, Math.max(24, p.x + dir * speed * dt));
+    if (p.dash > 0) p.trail.push({ x: p.x, t: 0.25 }); // afterimages left by a dash
+    p.trail.forEach((a) => { a.t -= dt; });
+    p.trail = p.trail.filter((a) => a.t > 0);
     p.dash = Math.max(0, p.dash - dt);
     p.dashCool = Math.max(0, p.dashCool - dt);
     p.safe = Math.max(0, p.safe - dt);
@@ -2001,6 +2004,12 @@ const Level = (() => {
   }
 
   function drawPlayer(p) {
+    // A dash leaves fading afterimages behind you (drawn even while you blink).
+    for (const a of p.trail) {
+      ctx.globalAlpha = (a.t / 0.25) * 0.4;
+      drawHeadphones(a.x, p.y - 4, 1, '#9A7FE0', false);
+    }
+    ctx.globalAlpha = 1;
     const blink = p.safe > 0 && Math.floor(S.time * 20) % 2 === 0;
     if (blink) return;
     if (p.shield > 0) {
