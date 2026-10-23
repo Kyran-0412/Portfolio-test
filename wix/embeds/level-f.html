@@ -69,10 +69,10 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 #piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
-.sample-status { position: absolute; top: 14px; left: 12px; z-index: 5; font: 500 12px var(--heading); letter-spacing: 0.06em; color: var(--glow); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px; }
+.sample-status { position: absolute; bottom: 12px; left: 12px; z-index: 5; font: 500 12px var(--heading); letter-spacing: 0.06em; color: var(--glow); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px; }
 .sample-status.bad { color: #ff8fa6; border-color: #c46a7a; }
 .sample-status[hidden] { display: none; }
-.reverb-test { position: absolute; top: 46px; left: 12px; z-index: 5; padding: 4px 10px; font: 500 12px var(--heading); letter-spacing: 0.06em; background: var(--panel); border-color: var(--accent); color: var(--glow); }
+.reverb-test { position: absolute; bottom: 44px; left: 12px; z-index: 5; padding: 4px 10px; font: 500 12px var(--heading); letter-spacing: 0.06em; background: var(--panel); border-color: var(--accent); color: var(--glow); }
 .reverb-test[hidden] { display: none; }
 
 /* Piano */
@@ -1069,8 +1069,9 @@ const Piano = (() => {
         targetPitches.clear();
         relabel();
       },
-      // Scale mode: A S D F G H J K play root + each step (default: major scale).
-      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11, 12]) {
+      // Scale mode: A S D F G H J play root + each step of the major scale, one
+      // key per note (no repeated octave on K, so nothing looks like a second root).
+      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11]) {
         releaseAll();
         scaleMode = true;
         shift = 0;
@@ -1281,7 +1282,7 @@ const Level = (() => {
   const W = 900, H = 400;
   // The music changes key with each phase: C while you break C, G while you
   // break G, and so on, back to F for the core. Scale mode always puts the
-  // scale on A–K, so every move stays on the same keys.
+  // scale on A–J, so every move stays on the same keys.
   const MAJOR = [0, 2, 4, 5, 7, 9, 11, 12];
   let ROOT, SCALE, SHARP_NAMES, ROOT_PC, THIRD_PC, FOURTH_PC, FIFTH_PC, FIFTHS, TRIADS;
   // Spells a major scale properly: one of each letter, with ♯ or ♭.
@@ -1412,7 +1413,7 @@ const Level = (() => {
             <h2>The Circle</h2>
             <div class="how">
               <span><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></span><span>Move and dash (dash through lasers)</span>
-              <span><kbd>A</kbd> – <kbd>K</kbd></span><span>Every key plays. A + G power shot, A + D + G triad. The key changes as each one breaks</span>
+              <span><kbd>A</kbd> – <kbd>J</kbd></span><span>Every key plays. A + G power shot, A + D + G triad. The key changes as each one breaks</span>
               <span><kbd>A</kbd> + <kbd>D</kbd></span><span>Resolve a violet laser while it charges or sweeps</span>
               <span><kbd>A</kbd> + <kbd>F</kbd> + <kbd>G</kbd></span><span>Sus4: a shockwave that clears notes and ground waves near you</span>
               <span>Hearts and volume</span><span>Hits take hearts; spamming makes you clip</span>

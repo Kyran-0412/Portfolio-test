@@ -31,11 +31,11 @@ try {
   };
 
   // Only the root is unlocked at the start.
-  assert.deepEqual(await game.locator('.piano-key .piano-name').allTextContents(), ['A', 'B', 'C♯', 'D', 'E', 'F♯', 'G♯', 'A']);
+  assert.deepEqual(await game.locator('.piano-key .piano-name').allTextContents(), ['A', 'B', 'C♯', 'D', 'E', 'F♯', 'G♯'], 'seven keys, no repeated octave');
   await game.locator('#fightBtn').click();
   await frame.waitForFunction(() => window.__boss.running);
   const locked = await game.locator('.piano-key.locked').count();
-  assert.equal(locked, 6, 'all but the two As are greyed out');
+  assert.equal(locked, 6, 'all but A are greyed out');
   await calm();
   await chord('s');
   assert.deepEqual(await fired(), [], 'a locked key fires nothing');
@@ -102,7 +102,7 @@ try {
   assert.deepEqual(await fired(), [], 'guesses do not fire');
   await chord('d');
   assert.equal(await S(() => window.__boss.moment), null);
-  assert.equal(await game.locator('.piano-key.locked').count(), 4, 'A, C♯, E (and top A) unlocked');
+  assert.equal(await game.locator('.piano-key.locked').count(), 4, 'A, C♯, E unlocked');
   await calm();
   await chord('a', 'd', 'g');
   assert.deepEqual(await fired(), ['triad', 'triad', 'triad']);

@@ -48,7 +48,7 @@
   function startMusic() { stopMusic(0.3); drone = Sound.track(DRONE, { fadeIn: 1.5 }); }
   function stopMusic(fade = 1.2) { if (drone) drone.stop(fade); drone = null; }
   window.__drone = () => drone; // for automatic tests
-  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // F♯ G♯ A♯ B C♯ D♯ E♯ F♯ on A–K
+  const SCALE = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => ROOT + s); // F♯ G♯ A♯ B C♯ D♯ E♯ on A–J (the top F♯ is kept for lookups)
   const SHARP_NAMES = ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯'];
   const FLAT_NAMES = ['G♭', 'A♭', 'B♭', 'C♭', 'D♭', 'E♭', 'F', 'G♭'];
   const ROOT_PC = 6, THIRD_PC = 10, FOURTH_PC = 11, FIFTH_PC = 1;

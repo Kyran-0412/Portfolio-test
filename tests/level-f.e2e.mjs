@@ -35,7 +35,7 @@ try {
     await frame.waitForFunction(() => window.__boss.transition === null, null, { timeout: 2000 });
   };
 
-  assert.deepEqual(await names(), ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C']);
+  assert.deepEqual(await names(), ['C', 'D', 'E', 'F', 'G', 'A', 'B']);
   await game.locator('#fightBtn').click();
   await frame.waitForFunction(() => window.__boss.running);
   assert.equal(await game.locator('.piano-key.locked').count(), 0, 'every key playable from the start');
@@ -63,7 +63,7 @@ try {
   await finishTransition();
   await calm();
   assert.deepEqual(await kindsAt(), ['fifth', 'note'], 'G adds fifths');
-  assert.deepEqual(await names(), ['G', 'A', 'B', 'C', 'D', 'E', 'F♯', 'G'], 'breaking C moves the fight to G major');
+  assert.deepEqual(await names(), ['G', 'A', 'B', 'C', 'D', 'E', 'F♯'], 'breaking C moves the fight to G major');
   assert.equal(await game.locator('.piano-key.locked').count(), 0);
   assert.deepEqual(await S(() => [...window.__boss.unlocked].sort((a, b) => a - b)), [0, 2, 4, 6, 7, 9, 11]);
   const fifths = await S(() => FIFTHS.map((f) => f.map((m) => m % 12)));
@@ -92,7 +92,7 @@ try {
   await toStage(4);
   assert.ok(await S(() => window.__boss.laserIn < 10 && window.__boss.groundIn > 50), 'E adds lasers, no bombs yet');
   await toStage(6);
-  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯'], 'F♯ spelled with E♯');
+  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯'], 'F♯ spelled with E♯');
   const timers = await S(() => ({ laser: window.__boss.laserIn, ground: window.__boss.groundIn, arp: window.__boss.arpIn }));
   assert.ok(timers.laser < 10 && timers.ground < 10 && timers.arp > 50, `F♯ stage timers ${JSON.stringify(timers)}`);
   await calm();
@@ -124,7 +124,7 @@ try {
   // Arpeggio fans from A♭, red lasers from E♭.
   await S(() => { window.__boss.hearts = 4; });
   await toStage(8);
-  assert.deepEqual(await names(), ['A♭', 'B♭', 'C', 'D♭', 'E♭', 'F', 'G', 'A♭'], 'A♭ in flats');
+  assert.deepEqual(await names(), ['A♭', 'B♭', 'C', 'D♭', 'E♭', 'F', 'G'], 'A♭ in flats');
   assert.ok(await S(() => window.__boss.arpIn < 10), 'arpeggios scheduled');
   await calm();
   await S(() => warnArp());
@@ -154,12 +154,12 @@ try {
   await game.locator('#endButtons button', { hasText: 'Try again' }).click();
   assert.equal(await S(() => window.__boss.boss.hp), 100);
   assert.equal(await S(() => window.__boss.phase), 0);
-  assert.deepEqual(await names(), ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'], 'back to C');
+  assert.deepEqual(await names(), ['C', 'D', 'E', 'F', 'G', 'A', 'B'], 'back to C');
   console.log('✓ out of hearts: hint shown, fight restarts');
 
   // Down to the F core, then zero health: it waits for F major.
   await toStage(11);
-  assert.deepEqual(await names(), ['F', 'G', 'A', 'B♭', 'C', 'D', 'E', 'F'], 'the core is back in F');
+  assert.deepEqual(await names(), ['F', 'G', 'A', 'B♭', 'C', 'D', 'E'], 'the core is back in F');
   assert.match(await S(() => window.__boss.banner?.text || ''), /Only F is left/);
   await calm();
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lf-core.png` });

@@ -182,8 +182,9 @@ const Piano = (() => {
         targetPitches.clear();
         relabel();
       },
-      // Scale mode: A S D F G H J K play root + each step (default: major scale).
-      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11, 12]) {
+      // Scale mode: A S D F G H J play root + each step of the major scale, one
+      // key per note (no repeated octave on K, so nothing looks like a second root).
+      useScale(root, steps = [0, 2, 4, 5, 7, 9, 11]) {
         releaseAll();
         scaleMode = true;
         shift = 0;

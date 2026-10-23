@@ -33,10 +33,10 @@ try {
     s.lasers.push({ stage: 'sweep', e: 1.2, dur: 1, a0: a, a1: a, cancellable: c, reverse: false, sound: [] });
   }, cancellable);
 
-  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯']);
+  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯']);
   await game.locator('#fightBtn').click();
   await frame.waitForFunction(() => window.__boss.running);
-  assert.equal(await game.locator('.piano-key.locked').count(), 4, 'F♯, A♯, C♯ (and top F♯) to start');
+  assert.equal(await game.locator('.piano-key.locked').count(), 4, 'F♯, A♯, C♯ to start');
   console.log('✓ F♯ major in scale mode (E♯ spelled right), triad notes unlocked');
 
   // The boss fires single notes and perfect fifths, never triads.
@@ -114,7 +114,7 @@ try {
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/lt-transition.png` });
   await finishTransition();
   assert.equal(await S(() => window.__boss.flipped), true);
-  assert.deepEqual(await names(), ['G♭', 'A♭', 'B♭', 'C♭', 'D♭', 'E♭', 'F', 'G♭']);
+  assert.deepEqual(await names(), ['G♭', 'A♭', 'B♭', 'C♭', 'D♭', 'E♭', 'F']);
   assert.equal(await game.locator('.piano-key.locked').count(), 3, 'C♭ (the fourth) unlocked');
   await calm();
   await S(() => { const s = window.__boss; for (let i = 0; i < 5; i++) s.notes.push({ x: s.player.x + (i - 2) * 40, y: s.player.y - 90, vx: 0, vy: 0, midi: 56, pc: 8, kind: 'note' }); s.notes.push({ x: 20, y: 40, vx: 0, vy: 0, midi: 56, pc: 8, kind: 'note' }); });
@@ -157,7 +157,7 @@ try {
   await game.locator('#endButtons button', { hasText: 'Try again' }).click();
   assert.equal(await S(() => window.__boss.boss.hp), 100);
   assert.equal(await S(() => window.__boss.flipped), false);
-  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯', 'F♯']);
+  assert.deepEqual(await names(), ['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯']);
   console.log('✓ out of hearts: the extra-hearts hint shows, and the fight restarts');
 
   // Winning
