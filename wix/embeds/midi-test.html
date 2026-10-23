@@ -192,6 +192,15 @@ const Sound = (() => {
       45: 'https://static.wixstatic.com/mp3/281301_67e59f77110240b4a7eb5fddb9e1aab4.wav', // A2
     },
   });
+  // Your own sound effects. A list is a set of variations: one plays at random
+  // (never the same twice running), with a slight random pitch and volume nudge.
+  Object.assign(SOUNDS, {
+    'door-locked': [
+      'https://static.wixstatic.com/mp3/281301_55e2ec682089429b8853bad98d460980.wav',
+      'https://static.wixstatic.com/mp3/281301_8ac1616de2b5484ab87c7e3fac5da419.wav',
+      'https://static.wixstatic.com/mp3/281301_744973ede9df491aa56ef58aedeb978c.wav',
+    ],
+  });
   const SFX_GAIN = 0.42; // one-shot effects like the bombs: punchy, under the lasers
   SOUNDS['circle-drone'] = { // minor drones, shifted from the nearest one into each key's relative minor
     48: 'https://static.wixstatic.com/mp3/281301_c61812d86634410482b8fae1a6cc3e05.wav', // C minor
@@ -207,6 +216,18 @@ const Sound = (() => {
 
   const SAMPLE_GAIN = 0.7; // samples' level next to the synth; tune once real sounds are in
   let ctx = null;
+  let pianoWanted = true; // pages without the piano (doors) skip its samples
+  const lastPick = {};    // the variation each sound played last
+  // Plays one of a sound's variations; null if none are loaded yet.
+  // pitch: random nudge up to this many semitones either way; level: up to this much quieter.
+  function play(name, { volume = SFX_GAIN, pitch = 0.5, level = 0.15 } = {}) {
+    const set = named[name];
+    if (!Array.isArray(set) || !set.length) return null;
+    let i = Math.floor(Math.random() * set.length);
+    if (set.length > 1 && i === lastPick[name]) i = (i + 1 + Math.floor(Math.random() * (set.length - 1))) % set.length;
+    lastPick[name] = i;
+    return playBuffer(set[i], { rate: Math.pow(2, ((Math.random() * 2 - 1) * pitch) / 12), volume: volume * (1 - Math.random() * level) });
+  }
   let out = null;
   const buffers = {};
   const named = {}; // name → buffer, or { note: buffer }
@@ -252,11 +273,11 @@ const Sound = (() => {
       dry = ctx.createGain();
       dry.connect(out);
       if (reverbWanted) buildReverb(reverbWanted);
-      Object.entries(SAMPLES).forEach(([midi, url]) => load(url, (b) => { buffers[midi] = b; }));
+      if (pianoWanted) Object.entries(SAMPLES).forEach(([midi, url]) => load(url, (b) => { buffers[midi] = b; }));
       wanted.forEach(loadNamed);
       if (!pending) finishLoad();
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {}); // before a click it just stays quiet
     return ctx;
   }
 
@@ -291,6 +312,7 @@ const Sound = (() => {
     if (!src) return;
     status.done = false;
     if (typeof src === 'string') { status.total++; load(src, (b) => { named[name] = b; }); return; }
+    if (Array.isArray(src)) { named[name] = []; src.forEach((url) => { status.total++; load(url, (b) => { named[name].push(b); }); }); return; }
     named[name] = {};
     for (const [midi, url] of Object.entries(src)) { status.total++; load(url, (b) => { named[name][midi] = b; }); }
   }
@@ -670,6 +692,11 @@ const Sound = (() => {
 
   return {
     unlock: audio,
+    play,
+    // For pages with no piano: call before any sound plays.
+    noPiano() { pianoWanted = false; status.total -= Object.keys(SAMPLES).length; },
+    // Starts loading straight away, before the first click (it stays silent until then).
+    warm() { audio(); },
     reverb(options) { reverbWanted = options || {}; if (ctx && !reverbIn) buildReverb(reverbWanted); },
     get hasReverb() { return !!reverbIn; },
     // Preview only: 'normal', 'wet' (just the reverb, loud enough to judge) or 'off'.
@@ -720,6 +747,7 @@ const Sound = (() => {
     },
     // Locked door: two dull knocks.
     locked() {
+      if (play('door-locked', { volume: 0.5 })) return;
       thump(0, 120, 55, 0.18, 0.5);
       noise(0, 0.08, 900, 200, 0.25);
       thump(0.11, 110, 50, 0.16, 0.35);

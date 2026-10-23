@@ -167,6 +167,10 @@
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tryDoor(); }
   });
 
+  // Load the door's own sounds now, so the first click already uses them.
+  Sound.noPiano();
+  Sound.preload(['door-locked']);
+  Sound.warm();
   Bridge.start();
 </script>
 </body>

@@ -262,6 +262,30 @@ try {
   assert.equal(shot, 1, 'an Arpeggiator shot plays one arp note');
   console.log('✓ the Arpeggiator uses the same arp pluck');
 
+  // Doors: their own sound, three variations, loaded before the first click; no piano.
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: [] })));
+  await page.goto(`${base}/dev/sim.html?page=production-logs`);
+  const df = page.frames().find((f) => f.url().includes('door.html'));
+  await df.waitForFunction(() => Sound.samples.done && Sound.has('door-locked'), null, { timeout: 8000 });
+  const door = await df.evaluate(() => ({ total: Sound.samples.total, loaded: Sound.samples.loaded }));
+  assert.deepEqual(door, { total: 3, loaded: 3 }, 'the door loads just its 3 variations, no piano');
+  const picks = await df.evaluate(() => {
+    const a = Sound.unlock(), rates = [], bufs = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); const set = x; setTimeout(() => { rates.push(set.playbackRate.value); bufs.push(set.buffer); }); return x; };
+    for (let i = 0; i < 12; i++) Sound.locked();
+    a.createBufferSource = orig;
+    return new Promise((r) => setTimeout(() => {
+      let repeats = 0;
+      for (let i = 1; i < bufs.length; i++) if (bufs[i] === bufs[i - 1]) repeats++;
+      r({ n: bufs.length, repeats, spread: Math.max(...rates) - Math.min(...rates), maxShift: Math.max(...rates.map((x) => Math.abs(Math.log2(x) * 12))) });
+    }, 20));
+  });
+  assert.equal(picks.n, 12, 'every knock plays a sample');
+  assert.equal(picks.repeats, 0, 'never the same variation twice in a row');
+  assert.ok(picks.spread > 0 && picks.maxShift <= 0.5 + 1e-9, `small random pitch nudges (${picks.maxShift.toFixed(2)} semitones max)`);
+  console.log('✓ doors: 3 variations at random (never twice running), nudged slightly, loaded before the first click');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');
 } finally {
