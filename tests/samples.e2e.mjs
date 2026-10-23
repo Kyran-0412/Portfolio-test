@@ -156,6 +156,29 @@ try {
   assert.ok(Math.abs(held.rate - Math.pow(2, 1 / 12)) < 1e-6, 'E4 is E♭4 up a semitone');
   console.log('✓ Feedback’s synth: loads only in its fight; holds keep ringing past the end of the 5 s note');
 
+  // The Circle's synth evolves: one voice at C, layered and driven by the F core.
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb'] })));
+  await page.goto(`${base}/dev/sim.html?page=level-f`);
+  const cg = page.frameLocator('#gameEmbed');
+  await cg.locator('#startBtn').click();
+  const cf = page.frames().find((f) => f.url().includes('level-f.html'));
+  await cf.waitForFunction(() => Sound.samples.done && Sound.has('circle'), null, { timeout: 8000 });
+  await cg.locator('#fightBtn').click();
+  const evo = await cf.evaluate(() => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    const count = (stage) => { BOSS.evolve(EVOLVE[stage], 0); const before = made.length; BOSS.hold(60, 0.3).stop(); return made.length - before; };
+    const out = { c: count(0), a: count(3), f: count(11), stage: BOSS.stage };
+    a.createBufferSource = orig;
+    return out;
+  });
+  assert.equal(evo.c, 1, 'at C the synth is a single voice');
+  assert.equal(evo.a, 3, 'at A a detuned pair joins it');
+  assert.equal(evo.f, 5, 'at the F core: detuned pair, octave up and sub');
+  assert.equal(evo.stage.cutoff, 18000);
+  console.log('✓ The Circle’s synth evolves: 1 voice at C, 3 at A, 5 by the F core, filter opening up');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');
 } finally {

@@ -32,7 +32,7 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
-## Boss synths (Feedback and the Tritone done)
+## Boss synths (all three in)
 
 **Files to update in Wix**
 
@@ -40,6 +40,12 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | --- | --- |
 | `wix/embeds/level-a.html` | Level A page's Embed HTML box |
 | `wix/embeds/level-fsharp.html` | Level F♯ page's Embed HTML box |
+| `wix/embeds/level-f.html` | Level F page's Embed HTML box |
+
+The Circle's synth (C3 to E♭5) evolves over the twelve keys without extra samples: it plays through a
+low-pass filter, drive and a ping-pong echo, with detuned and octave layers made from the same notes.
+Every setting moves during each key's shatter break, from dark and dry at C to wide open and driven
+at the F core. The numbers are in `EVOLVE` near the top of `src/embeds/level-f.html`, one row per key.
 
 Each boss has its own synth for its notes, fifths, triads and held chords; your attacks stay on the
 piano. Feedback's notes are in `SOUNDS.feedback` in `src/lib/sound.js` (A3 to E♭5, every 3 semitones,

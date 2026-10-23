@@ -273,6 +273,18 @@ const Sound = (() => {
       72: 'https://static.wixstatic.com/mp3/281301_8bef76fb25704355bb0396dbaa0762bd.wav', // C5
       75: 'https://static.wixstatic.com/mp3/281301_16f671b2217b41f598861eff6aebcff1.wav', // E♭5
     },
+    circle: {
+      48: 'https://static.wixstatic.com/mp3/281301_dc77cc716f0642109a8a398797172566.wav', // C3
+      51: 'https://static.wixstatic.com/mp3/281301_942a6530e1934e81ad852bf07f14a7f0.wav', // E♭3
+      54: 'https://static.wixstatic.com/mp3/281301_bfba13e00c154bb886a70ce84abaa9ce.wav', // F♯3
+      57: 'https://static.wixstatic.com/mp3/281301_b8a6e2a0ed514a7195da255718187208.wav', // A3
+      60: 'https://static.wixstatic.com/mp3/281301_1c5d06684fd34b3c95aef71659782888.wav', // C4
+      63: 'https://static.wixstatic.com/mp3/281301_44bb95fda3b744dc9ea2e8fd8c3113a3.wav', // E♭4
+      66: 'https://static.wixstatic.com/mp3/281301_00314b62bb624d11ac1125a3aa4c0b21.wav', // F♯4
+      69: 'https://static.wixstatic.com/mp3/281301_7620b22402d849caa45a1aaa6c7d746b.wav', // A4
+      72: 'https://static.wixstatic.com/mp3/281301_ade1e0d8d65641b9b966b2740f549fdd.wav', // C5
+      75: 'https://static.wixstatic.com/mp3/281301_addeb8f56f674cc7893a6a259df800e2.wav', // E♭5
+    },
     tritone: {
       54: 'https://static.wixstatic.com/mp3/281301_add99043622741a68b42e92cb9d17911.wav', // F♯3
       57: 'https://static.wixstatic.com/mp3/281301_42e851ceed714a81bb634e3b853d21fb.wav', // A3
@@ -546,12 +558,15 @@ const Sound = (() => {
   // A pitched sample that rings until stop(). With sustain, a hold longer
   // than the sample repeats its steady middle (from 1 s to just before the
   // end), crossfading each time so there's no click.
-  function sampledVoice(buf, rate, volume, sustain) {
+  function sampledVoice(buf, rate, volume, sustain, dest = null) {
     const a = audio();
     const master = a.createGain();
     master.gain.value = volume;
-    master.connect(dryOut());
-    toReverb(master, reverbWanted ? reverbWanted.instruments ?? 1 : 0); // boss synths and other instruments
+    if (dest) master.connect(dest); // through an instrument's effects chain
+    else {
+      master.connect(dryOut());
+      toReverb(master, reverbWanted ? reverbWanted.instruments ?? 1 : 0); // boss synths and other instruments
+    }
     const srcs = [];
     const play = (offset, at, fade) => {
       const src = a.createBufferSource(), g = a.createGain();
@@ -592,13 +607,76 @@ const Sound = (() => {
     };
   }
 
+  // An effects chain an instrument can play through, whose settings can move
+  // over time: low-pass filter → drive (saturation) → ping-pong echo, then
+  // out dry and into the reverb (with its own reverb amount).
+  function fxChain() {
+    const a = audio();
+    const input = a.createGain(), filter = a.createBiquadFilter();
+    const clean = a.createGain(), shaper = a.createWaveShaper(), driven = a.createGain(), post = a.createGain();
+    filter.type = 'lowpass'; filter.Q.value = 0.8; filter.frequency.value = 20000;
+    driven.gain.value = 0;
+    input.connect(filter);
+    filter.connect(clean).connect(post);
+    filter.connect(shaper).connect(driven).connect(post);
+    // Ping-pong echo: left, then right, feeding back.
+    const send = a.createGain(), dl = a.createDelay(1), dr = a.createDelay(1), fb = a.createGain();
+    const pl = a.createStereoPanner(), pr = a.createStereoPanner();
+    send.gain.value = 0; fb.gain.value = 0.35; pl.pan.value = -0.7; pr.pan.value = 0.7;
+    post.connect(send).connect(dl);
+    dl.connect(pl).connect(dryOut());
+    dl.connect(dr).connect(pr).connect(dryOut());
+    dr.connect(fb).connect(dl);
+    post.connect(dryOut());
+    const space = a.createGain();
+    post.connect(space);
+    toReverb(space, 1);
+    let drive = -1;
+    return {
+      input,
+      // Moves every setting to p over `glide` seconds.
+      set(p, glide = 0.6) {
+        const t = a.currentTime, tc = Math.max(0.01, glide / 4);
+        filter.frequency.setTargetAtTime(p.cutoff ?? 20000, t, tc);
+        const d = p.drive ?? 0;
+        if (d !== drive) {
+          drive = d;
+          const k = 1 + d * 14, n = 1024, curve = new Float32Array(n);
+          for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(k * x) / Math.tanh(k); }
+          shaper.curve = curve;
+        }
+        driven.gain.setTargetAtTime(d * 0.8, t, tc);
+        clean.gain.setTargetAtTime(1 - d * 0.5, t, tc);
+        const delay = p.echoTime ?? 0.22;
+        dl.delayTime.setTargetAtTime(delay, t, tc);
+        dr.delayTime.setTargetAtTime(delay, t, tc);
+        send.gain.setTargetAtTime(p.echo ?? 0, t, tc);
+        space.gain.setTargetAtTime((reverbWanted ? reverbWanted.instruments ?? 1 : 1) * (p.space ?? 1), t, tc);
+      },
+    };
+  }
+
   // A sampled instrument (like a boss synth) with the same note / chord / hold
   // calls as the piano. Until its samples load, it plays the piano instead.
-  function instrument(name, { gain = 1, release = 0.5 } = {}) {
+  // With fx: true it plays through an effects chain, and evolve() moves its
+  // sound: the chain's settings, plus layers made from the same samples
+  // (detune: two copies ± cents at detuneMix; octUp and sub: octave layers).
+  function instrument(name, { gain = 1, release = 0.5, fx = false } = {}) {
     const ready = () => named[name] && Object.keys(named[name]).length;
+    let chain = null, layers = { detune: 0, detuneMix: 0, octUp: 0, sub: 0 }, pending = null;
     const start = (midi, volume, sustain) => {
       const n = nearestIn(named[name], midi);
-      return sampledVoice(n.buf, n.rate, volume * SAMPLE_GAIN * gain, sustain);
+      const v = volume * SAMPLE_GAIN * gain;
+      if (!fx) return sampledVoice(n.buf, n.rate, v, sustain);
+      if (!chain) { chain = fxChain(); chain.set(pending || {}, 0); }
+      // Layers add up, so the whole note is scaled down to keep its level steady-ish.
+      const total = 1 + 2 * layers.detuneMix + layers.octUp + layers.sub, lv = v / Math.sqrt(total);
+      const voices = [sampledVoice(n.buf, n.rate, lv, sustain, chain.input)];
+      const add = (rate, mix) => { if (mix > 0) voices.push(sampledVoice(n.buf, rate, lv * mix, sustain, chain.input)); };
+      const c = Math.pow(2, layers.detune / 1200);
+      add(n.rate * c, layers.detuneMix); add(n.rate / c, layers.detuneMix);
+      add(n.rate * 2, layers.octUp); add(n.rate / 2, layers.sub);
+      return { stop: (r) => voices.forEach((x) => x.stop(r)) };
     };
     const inst = {
       note(midi, when = 0, length = 1.2, volume = 0.4) {
@@ -613,6 +691,12 @@ const Sound = (() => {
         const v = start(midi, volume, true);
         return { stop: () => v.stop(release) };
       },
+      evolve(p, glide = 0.6) {
+        layers = { detune: p.detune ?? 0, detuneMix: p.detuneMix ?? 0, octUp: p.octUp ?? 0, sub: p.sub ?? 0 };
+        pending = p;
+        if (chain) chain.set(p, glide);
+      },
+      get stage() { return { ...layers, ...(pending || {}) }; },
     };
     return inst;
   }
