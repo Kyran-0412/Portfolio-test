@@ -277,6 +277,12 @@ const Sound = (() => {
     },
   });
   // Backing drones: seamless loops, one per fight.
+  SOUNDS['circle-drone'] = { // minor drones, shifted from the nearest one into each key's relative minor
+    48: 'https://static.wixstatic.com/mp3/281301_c61812d86634410482b8fae1a6cc3e05.wav', // C minor
+    51: 'https://static.wixstatic.com/mp3/281301_e83debe4e7df44639c509240c71c396d.wav', // E♭ minor
+    54: 'https://static.wixstatic.com/mp3/281301_011e9bd42a76417782a716fe8835238c.wav', // F♯ minor
+    57: 'https://static.wixstatic.com/mp3/281301_c6fceeffce584e7c9f3bf1efa7969716.wav', // A minor
+  };
   SOUNDS['tritone-drone'] = 'https://static.wixstatic.com/mp3/281301_3b8ec22a29394277a7a98b42e6a80a42.wav'; // D♯ minor (F♯'s relative minor)
   SOUNDS['feedback-drone'] = 'https://static.wixstatic.com/mp3/281301_c7a3733e0fac45d0be421666778cb5a2.wav'; // F♯ minor (A's relative minor)
   const MUSIC_GAIN = 0.2; // backing drones' level under everything else
@@ -685,9 +691,19 @@ const Sound = (() => {
 
   // A backing track: loops the whole file. Returns null if its file isn't
   // loaded, so a fight with no music yet just carries on.
-  function track(name, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
+  function track(name, opts = {}) {
     const buf = named[name];
     if (!buf || !buf.getChannelData) return null;
+    return playTrack(buf, opts);
+  }
+  // A backing track from a pitched set, shifted from the nearest one to `midi`.
+  function trackNear(name, midi, opts = {}) {
+    const set = named[name];
+    if (!set || set.getChannelData || !Object.keys(set).length) return null;
+    const n = nearestIn(set, midi);
+    return playTrack(n.buf, { ...opts, rate: n.rate });
+  }
+  function playTrack(buf, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
     const a = audio(), t = a.currentTime + 0.05;
     const src = a.createBufferSource(), gain = a.createGain();
     src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
@@ -750,6 +766,7 @@ const Sound = (() => {
     laser,
     instrument,
     track,
+    trackNear,
     // Levels list the named sounds they use, so others don't download them.
     preload(names) { names.forEach((n) => { if (!wanted.has(n)) { wanted.add(n); if (ctx) loadNamed(n); } }); },
     has: (name) => !!named[name],
@@ -1259,6 +1276,16 @@ const Level = (() => {
     [18000, 0.85, 20, 0.65, 0.35, 0.4,  0.35, 1.7], // F core: everything
   ].map(([cutoff, drive, detune, detuneMix, octUp, sub, echo, space]) => ({ cutoff, drive, detune, detuneMix, octUp, sub, echo, space }));
 
+  // A steady minor drone under each key: its relative minor (Am under C, Em
+  // under G…), crossfading to the next during each shatter break.
+  let drone = null;
+  function startDrone(key, fade) {
+    if (drone) drone.stop(fade);
+    drone = Sound.trackNear('circle-drone', 48 + ((KEY_INFO[key].semitones + 9) % 12), { fadeIn: fade });
+  }
+  function stopDrone(fade = 1.2) { if (drone) drone.stop(fade); drone = null; }
+  window.__drone = () => drone; // for automatic tests
+
   function useKey(key) {
     ROOT = 48 + KEY_INFO[key].semitones; // C3 up to B3
     SCALE = MAJOR.map((st) => ROOT + st);
@@ -1361,7 +1388,7 @@ const Level = (() => {
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
-      Sound.preload(['circle', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.preload(['circle', 'circle-drone', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
       Sound.reverb({ mix: 0.32, seconds: 2.2, piano: 1.7, instruments: 1 }); // as in the other fights
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
@@ -1402,6 +1429,7 @@ const Level = (() => {
     ui.end.classList.remove('show');
     useKey('C');
     BOSS.evolve(EVOLVE[0], 0);
+    startDrone('C', 1.5);
     Level.piano.setEnabled(true);
   }
 
@@ -1655,6 +1683,7 @@ const Level = (() => {
     S.pending = null;
     useKey(KEYS[next]); // the next key's section is fought in that key
     BOSS.evolve(EVOLVE[next], BREAK); // the synth grows during the shatter
+    startDrone(KEYS[next], BREAK);    // and the drone moves to the new key
     if (S.player.stun > 0) Level.piano.setEnabled(false);
   }
 
@@ -1728,6 +1757,7 @@ const Level = (() => {
 
   // ---------- Endings ----------
   function finish(title, text, buttons, hint) {
+    stopDrone();
     S.running = false;
     S.lasers.forEach(endLaser);
     Level.piano.setEnabled(false);
@@ -1755,6 +1785,7 @@ const Level = (() => {
   }
 
   function win() {
+    stopDrone(2.5);
     S.over = true;
     S.running = false;
     S.lasers.forEach(endLaser);

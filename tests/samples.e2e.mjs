@@ -177,6 +177,21 @@ try {
   assert.equal(evo.a, 3, 'at A a detuned pair joins it');
   assert.equal(evo.f, 5, 'at the F core: detuned pair, octave up and sub');
   assert.equal(evo.stage.cutoff, 18000);
+  // The drone: the key's relative minor, from the nearest of the four.
+  const drones = await cf.evaluate(() => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    const rateFor = (key) => { startDrone(key, 0.1); return +made.at(-1).playbackRate.value.toFixed(4); };
+    const out = { C: rateFor('C'), G: rateFor('G'), F: rateFor('F'), loops: made.every((x) => x.loop) };
+    a.createBufferSource = orig;
+    return out;
+  });
+  assert.equal(drones.C, 1, 'C: the A minor drone as recorded');
+  assert.equal(drones.G, +Math.pow(2, 1 / 12).toFixed(4), 'G: E minor, the E♭ drone up a semitone');
+  assert.equal(drones.F, +Math.pow(2, -1 / 12).toFixed(4), 'F: D minor, the E♭ drone down a semitone');
+  assert.ok(drones.loops, 'drones loop');
+  console.log('✓ The Circle’s drone plays each key’s relative minor (Am under C, Em under G, Dm under F)');
   console.log('✓ The Circle’s synth evolves: 1 voice at C, 3 at A, 5 by the F core, filter opening up');
 
   assert.deepEqual(errors, [], 'no page errors');
