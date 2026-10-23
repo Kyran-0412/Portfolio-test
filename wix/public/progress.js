@@ -19,11 +19,28 @@ export const LEVEL_PATHS = {
 // Levels that hide an extra heart (more starting hearts in boss fights).
 export const HEART_LEVELS = ['E', 'B'];
 
+// The boss fights. Attempting one unlocks its attacks in the Tutorial's practice mode.
+export const BOSS_LEVELS = ['A', 'F#', 'F'];
+
 // held:   keys won from a level but not yet placed in the circle
 // placed: keys placed in the circle, always in circle order
 // hearts: levels whose hidden extra heart has been found
+// tried:  boss fights that have been started at least once
 export function emptyProgress() {
-  return { v: 1, held: [], placed: [], seenIntro: false, hearts: [] };
+  return { v: 1, held: [], placed: [], seenIntro: false, hearts: [], tried: [] };
+}
+
+// Starting a boss fight. Only boss levels count, once each.
+export function markTried(progress, key) {
+  if (!BOSS_LEVELS.includes(key) || (progress.tried || []).includes(key)) return progress;
+  return { ...progress, tried: [...(progress.tried || []), key] };
+}
+
+// Bosses attempted so far, counting ones already beaten (in case they were
+// beaten before attempts were recorded).
+export function triedBosses(progress) {
+  const done = [...progress.placed, ...progress.held];
+  return BOSS_LEVELS.filter((k) => (progress.tried || []).includes(k) || done.includes(k));
 }
 
 // Finding a level's hidden heart. Only counts for levels that hide one,
@@ -95,6 +112,7 @@ export function parseProgress(raw) {
   const held = Array.isArray(data.held) && data.held.includes(next) ? [next] : [];
 
   const hearts = HEART_LEVELS.filter((k) => Array.isArray(data.hearts) && data.hearts.includes(k));
+  const tried = BOSS_LEVELS.filter((k) => Array.isArray(data.tried) && data.tried.includes(k));
 
-  return { v: 1, held, placed, seenIntro: data.seenIntro === true, hearts };
+  return { v: 1, held, placed, seenIntro: data.seenIntro === true, hearts, tried };
 }

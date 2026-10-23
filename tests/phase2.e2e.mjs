@@ -66,7 +66,7 @@ try {
   await page.waitForFunction(() => !document.getElementById('keyIcon').hidden);
   await page.waitForTimeout(1300);
   await page.screenshot({ path: `${shots}/p2-key-found.png` });
-  assert.deepEqual(await saved(), { v: 1, held: ['C'], placed: [], seenIntro: false, hearts: [] });
+  assert.deepEqual(await saved(), { v: 1, held: ['C'], placed: [], seenIntro: false, hearts: [], tried: [] });
   console.log('✓ winning C gives the key, shows the tutorial message and the key icon');
 
   // 3. Circle: C's slot shimmers; placing it lights C and points to G once.
@@ -143,7 +143,7 @@ try {
   await circle.locator('#reset').click();
   await circle.locator('#reset[hidden]').waitFor({ state: 'attached' });
   assert.equal(await circle.locator('g.node.lit').count(), 0);
-  assert.deepEqual(await saved(), { v: 1, held: [], placed: [], seenIntro: false, hearts: [] });
+  assert.deepEqual(await saved(), { v: 1, held: [], placed: [], seenIntro: false, hearts: [], tried: [] });
   await page.waitForTimeout(1500);
   await page.locator('#circle').screenshot({ path: `${shots}/p2-circle-new.png` });
   console.log('✓ reset clears progress');

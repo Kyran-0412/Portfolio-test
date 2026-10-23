@@ -156,6 +156,7 @@
   }
 
   function begin() {
+    Level.attempted(); // unlocks this boss's attacks in the Tutorial's practice mode
     if (S) S.lasers.forEach(endLaser); // nothing carries over into a new fight
     newState();
     S.running = true;

@@ -20,13 +20,42 @@
   .dot.on { background: var(--bright); box-shadow: 0 0 10px rgba(200, 184, 255, 0.8); }
   #feedback { min-height: 1.4em; color: var(--glow); }
   #feedback.bad { color: #e7a3b0; }
+  canvas[hidden] { display: none; }
   canvas { display: block; width: 900px; max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
+  .actions { display: flex; gap: 12px; align-items: center; margin-top: 2px; }
+  .actions[hidden] { display: none; }
+  .tip-wrap { position: relative; display: inline-flex; }
+  .tip-wrap.locked::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    white-space: nowrap; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: var(--glow);
+    background: var(--panel); border: 1px solid var(--accent); opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  }
+  .tip-wrap.locked:hover::after { opacity: 1; }
+  .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
   #collect {
     font: 600 22px var(--heading); letter-spacing: 0.14em; padding: 12px 48px; margin-top: 2px;
     background: var(--mid); border-color: var(--glow); color: #fff;
     box-shadow: 0 0 24px rgba(200, 184, 255, 0.55); animation: collect 1.6s ease-in-out infinite;
   }
-  #collect[hidden] { display: none; }
+  /* Practice mode: pick the dummy's attacks */
+  .menu { width: 900px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .menu[hidden] { display: none; }
+  .menu h2 { margin: 0; font: 600 30px var(--heading); letter-spacing: 0.02em; }
+  .groups { display: flex; gap: 14px; justify-content: center; }
+  .group { display: flex; flex-direction: column; gap: 8px; width: 270px; }
+  .group h3 { margin: 0; font: 500 12px var(--heading); letter-spacing: 0.16em; text-transform: uppercase; color: var(--bright); text-align: left; }
+  .pcard {
+    text-align: left; padding: 9px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 3px;
+    background: linear-gradient(#2c2735, #211e28); border: 1px solid #3a3446; color: var(--text); box-shadow: none;
+  }
+  .pcard strong { font: 600 16px var(--heading); letter-spacing: 0.03em; }
+  .pcard span { font-size: 12px; color: var(--quiet); line-height: 1.35; }
+  .pcard.on { border-color: var(--glow); background: linear-gradient(#3e3352, #2b2438); box-shadow: 0 0 14px rgba(200, 184, 255, 0.35); }
+  .pcard.on strong::before { content: '✓ '; color: var(--glow); }
+  .pcard:disabled { opacity: 0.38; cursor: not-allowed; }
+  .pcard em { font: 500 11px var(--heading); letter-spacing: 0.1em; text-transform: uppercase; color: #e7a3b0; font-style: normal; }
+  .practice-bar { display: flex; gap: 12px; }
+  .practice-bar[hidden], .tut[hidden] { display: none; }
   @keyframes collect { 0%, 100% { box-shadow: 0 0 14px rgba(200, 184, 255, 0.45); } 50% { box-shadow: 0 0 30px rgba(200, 184, 255, 0.9); } }
 </style>
 </head>
@@ -46,7 +75,9 @@
   const LETTER = { 0: 'A', 2: 'S', 4: 'D', 5: 'F', 7: 'G', 9: 'H', 11: 'J' };
   const C = 0, E = 4, F = 5, G = 7;
   const name = (pc) => Piano.noteName(pc);
-  const W = 900, H = 210, FLOOR = H - 26;
+  const W = 900;
+  let H = 210, FLOOR = H - 26; // the arena grows taller in practice mode
+  let mode = 'tutorial';       // 'tutorial', 'free', 'menu' or 'practice'
   const CHORD_WINDOW = 0.09;
   const rand = (a, b) => a + Math.random() * (b - a);
   let ui = {}, canvas, ctx;
@@ -60,29 +91,51 @@
   let onNote = () => {}, onMove = () => {};
 
   const STEPS = 9;
-  window.__tut = { get P() { return P; }, get free() { return free; }, get laser() { return laser; }, get floaters() { return floaters; }, get pickup() { return pickup; } };
+  window.__tut = { get P() { return P; }, get free() { return free; }, get mode() { return mode; }, get laser() { return laser; }, get floaters() { return floaters; }, get pickup() { return pickup; } };
 
   Level.setup({
     description: 'Your computer keyboard is a piano. Learn to play it, and every move you’ll need in the fights ahead.',
     start(stage) {
       stage.innerHTML = `
-        <div class="step" id="step"></div>
-        <h1 id="instruction"></h1>
-        <p id="hint"></p>
-        <div class="dots" id="dots"></div>
+        <div class="step tut" id="step"></div>
+        <h1 class="tut" id="instruction"></h1>
+        <p class="tut" id="hint"></p>
+        <div class="dots tut" id="dots"></div>
         <canvas id="arena" width="${W}" height="${H}"></canvas>
-        <p id="feedback"></p>
-        <button id="collect" hidden>COLLECT KEY</button>`;
+        <div class="menu" id="menu" hidden>
+          <h2>Practice mode</h2>
+          <p>Pick the attacks the practice dummy uses, as many as you like. You can’t lose here: every move works, and your hearts never run out.</p>
+          <div class="groups" id="groups"></div>
+          <div class="actions"><button class="primary" id="goBtn">Practise</button><button id="menuBack">Back to free play</button></div>
+        </div>
+        <p class="tut" id="feedback"></p>
+        <div class="actions" id="actions" hidden>
+          <button id="collect">COLLECT KEY</button>
+          <span class="tip-wrap" id="practiceWrap"><button id="practiceBtn">Practice mode</button></span>
+          <button id="redoBtn">Redo tutorial</button>
+        </div>
+        <div class="practice-bar" id="practiceBar" hidden><button id="backFree">Return to free play</button><button id="changeBtn">Change attacks</button></div>`;
       ui = {
         step: stage.querySelector('#step'), instruction: stage.querySelector('#instruction'),
         hint: stage.querySelector('#hint'), dots: stage.querySelector('#dots'), feedback: stage.querySelector('#feedback'),
-        collect: stage.querySelector('#collect'),
+        collect: stage.querySelector('#collect'), actions: stage.querySelector('#actions'),
+        menu: stage.querySelector('#menu'), groups: stage.querySelector('#groups'), go: stage.querySelector('#goBtn'),
+        practiceBar: stage.querySelector('#practiceBar'), practiceWrap: stage.querySelector('#practiceWrap'),
+        practiceBtn: stage.querySelector('#practiceBtn'), tut: [...stage.querySelectorAll('.tut')],
       };
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
-      ui.collect.onclick = () => { ui.collect.blur(); Level.win(); };
+      // Already have C: the big button goes home; otherwise it collects the key.
+      ui.collect.onclick = () => { ui.collect.blur(); if (Level.status === 'beaten') Level.back(); else Level.win(); };
+      stage.querySelector('#redoBtn').onclick = (e) => { e.currentTarget.blur(); redoTutorial(); };
+      ui.practiceBtn.onclick = (e) => { e.currentTarget.blur(); openMenu(); };
+      stage.querySelector('#menuBack').onclick = (e) => { e.currentTarget.blur(); showFree(); };
+      ui.go.onclick = (e) => { e.currentTarget.blur(); startPractice(); };
+      stage.querySelector('#backFree').onclick = (e) => { e.currentTarget.blur(); Practice.stop(); showFree(); };
+      stage.querySelector('#changeBtn').onclick = (e) => { e.currentTarget.blur(); Practice.stop(); openMenu(); };
       requestAnimationFrame(loop);
-      stepOne();
+      // Done the tutorial before (C already won): straight to free play.
+      if (Level.status === 'beaten') freePlay(); else stepOne();
     },
   });
 
@@ -90,6 +143,7 @@
 
   // ---------- Input ----------
   piano.onNoteOn((midi) => {
+    if (mode === 'practice') Practice.noteOn(midi % 12);
     onNote(midi % 12, midi);
     if (!pending) pending = { notes: new Map(), t: CHORD_WINDOW };
     pending.notes.set(midi % 12, midi);
@@ -110,11 +164,14 @@
     P.dashCool = 0.9;
     P.dashDir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) || P.face;
     Sound.whoosh();
+    if (mode === 'practice') Practice.dashed();
     onMove('dash');
   }
 
   // Notes pressed within a moment of each other count as one chord, as in the fights.
   function release(notes) {
+    if (mode === 'practice') return Practice.release(notes);
+    if (mode === 'menu') return;
     const has = (pc) => notes.has(pc);
     let kind = 'single';
     if (has(C) && has(F) && has(G)) kind = 'sus4';
@@ -288,12 +345,114 @@
   function freePlay() {
     free = true;
     piano.clearMarks();
-    ui.step.textContent = 'Tutorial complete';
-    ui.instruction.textContent = 'You know every move';
+    onNote = () => {}; onMove = () => {};
+    const back = Level.status === 'beaten';
+    ui.step.textContent = back ? 'Free play' : 'Tutorial complete';
+    ui.instruction.textContent = back ? 'Welcome back' : 'You know every move';
     ui.hint.textContent = 'A + G power shot · A + D + G triad · A + D resolve · A + F + G sus4 · Space dash. Every shot is loud: play too much in a fight and you’ll clip.';
     ui.dots.innerHTML = '';
     say('Practise as long as you like.');
-    ui.collect.hidden = false;
+    ui.collect.textContent = back ? 'RETURN HOME' : 'COLLECT KEY';
+    // Practice mode opens once Feedback, the first boss, has been attempted.
+    const open = Level.tried.includes('A');
+    ui.practiceBtn.disabled = !open;
+    ui.practiceWrap.classList.toggle('locked', !open);
+    ui.practiceWrap.dataset.tip = 'Unlocks after level “Feedback” has been attempted';
+    showFree();
+  }
+
+  // Shows the free-play arena (from the menu or practice too).
+  function showFree() {
+    mode = 'free';
+    pianoEl().hidden = false;
+    setArena(210);
+    canvas.hidden = false;
+    ui.menu.hidden = true;
+    ui.practiceBar.hidden = true;
+    ui.tut.forEach((el) => { el.hidden = false; });
+    ui.actions.hidden = false;
+    piano.setEnabled(true);
+  }
+
+  function setArena(h) {
+    H = h; FLOOR = H - 26;
+    if (canvas.height !== h) canvas.height = h;
+  }
+
+  function clearArena() {
+    fx = []; rings = []; sparks = []; texts = []; markers = []; floaters = []; pickup = null;
+    if (laser) { laser.sound.forEach((x) => x.stop()); laser = null; }
+  }
+
+  function redoTutorial() {
+    free = false;
+    mode = 'tutorial';
+    clearArena();
+    stepNine.active = false; stepThree.check = null;
+    ui.actions.hidden = true;
+    P.x = W / 2;
+    stepOne();
+  }
+
+  // ---------- Practice mode: the attack picker ----------
+  const BOSS_NAMES = { A: 'Feedback', 'F#': 'The Tritone', F: 'The Final Boss' };
+  const ATTACKS = [
+    { id: 'note', boss: 'A', name: 'Single notes', desc: 'Aimed notes that follow you a little.' },
+    { id: 'triad', boss: 'A', name: 'Triads', desc: 'Three notes fanned out.' },
+    { id: 'held', boss: 'A', name: 'Held chord', desc: 'It holds two notes of a chord: play the missing one.' },
+    { id: 'fifth', boss: 'F#', name: 'Perfect fifths', desc: 'Two notes as one faster shot.' },
+    { id: 'violet', boss: 'F#', name: 'Violet lasers', desc: 'Resolve with A + D, or dash through.' },
+    { id: 'red', boss: 'F#', name: 'Red lasers', desc: 'Can’t be resolved: dash through.' },
+    { id: 'bomb', boss: 'F', name: 'Power-chord bombs', desc: 'Split into ground waves: dash or sus4 them.' },
+    { id: 'arp', boss: 'F', name: 'Arpeggio fans', desc: 'A chord sprayed across the floor.' },
+  ];
+  const chosen = new Set(['note']);
+
+  const pianoEl = () => document.getElementById('piano');
+  function openMenu() {
+    mode = 'menu';
+    pianoEl().hidden = true; // not needed while picking, and it frees the space
+    canvas.hidden = true;
+    ui.tut.forEach((el) => { el.hidden = true; });
+    ui.actions.hidden = true;
+    ui.practiceBar.hidden = true;
+    ui.menu.hidden = false;
+    ui.groups.innerHTML = '';
+    for (const boss of ['A', 'F#', 'F']) {
+      const unlocked = Level.tried.includes(boss);
+      const group = document.createElement('div');
+      group.className = 'group';
+      group.innerHTML = `<h3>${BOSS_NAMES[boss]}</h3>`;
+      for (const a of ATTACKS.filter((x) => x.boss === boss)) {
+        if (!unlocked) chosen.delete(a.id);
+        const b = document.createElement('button');
+        b.className = 'pcard' + (chosen.has(a.id) ? ' on' : '');
+        b.id = `attack-${a.id}`;
+        b.disabled = !unlocked;
+        b.innerHTML = `<strong>${a.name}</strong><span>${a.desc}</span>${unlocked ? '' : `<em>Unlocks after “${BOSS_NAMES[boss]}” has been attempted</em>`}`;
+        b.onclick = () => {
+          b.blur();
+          chosen.has(a.id) ? chosen.delete(a.id) : chosen.add(a.id);
+          b.classList.toggle('on', chosen.has(a.id));
+          ui.go.disabled = !chosen.size;
+        };
+        group.append(b);
+      }
+      ui.groups.append(group);
+    }
+    ui.go.disabled = !chosen.size;
+  }
+
+  function startPractice() {
+    if (!chosen.size) return;
+    mode = 'practice';
+    pianoEl().hidden = false;
+    clearArena();
+    ui.menu.hidden = true;
+    canvas.hidden = false;
+    ui.practiceBar.hidden = false;
+    setArena(330);
+    Practice.start([...chosen]);
   }
 
   // ---------- The arena ----------
@@ -302,11 +461,14 @@
     const dt = Math.min(0.05, (now - (last || now)) / 1000);
     last = now;
     time += dt;
+    if (mode === 'menu') return;
+    if (mode === 'practice') { movePlayer(dt); Practice.update(dt); Practice.draw(); return; }
     update(dt);
     draw();
   }
 
-  function update(dt) {
+  // Moving and dashing, shared by the tutorial arena and practice mode.
+  function movePlayer(dt) {
     P.dir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
     if (P.dir) P.face = P.dir;
     const speed = P.dash > 0 ? 1300 : 380, dir = P.dash > 0 ? P.dashDir : P.dir;
@@ -315,12 +477,17 @@
     P.dash = Math.max(0, P.dash - dt);
     P.dashCool = Math.max(0, P.dashCool - dt);
     P.shield = Math.max(0, P.shield - dt);
-    if (stepThree.check) stepThree.check();
-
+    P.trail.forEach((p) => { p.t -= dt; });
+    P.trail = P.trail.filter((p) => p.t > 0);
     if (pending) {
       pending.t -= dt;
       if (pending.t <= 0) { const n = pending.notes; pending = null; release(n); }
     }
+  }
+
+  function update(dt) {
+    movePlayer(dt);
+    if (stepThree.check) stepThree.check();
     if (laser) laser.t += dt;
     if (pickup) {
       pickup.y += 90 * dt;
@@ -343,8 +510,6 @@
     sparks = sparks.filter((s) => s.t > 0);
     texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
     texts = texts.filter((t) => t.t > 0);
-    P.trail.forEach((p) => { p.t -= dt; });
-    P.trail = P.trail.filter((p) => p.t > 0);
   }
 
   function draw() {
@@ -430,6 +595,415 @@
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(x, y, w, Math.max(0, h), r) : ctx.rect(x, y, w, Math.max(0, h));
   }
+</script>
+<script>
+  // ---------- Practice mode: a dummy boss with the attacks you picked ----------
+  // Everything is in C major, on the Tutorial's keyboard: A + G power shot,
+  // A + D + G triad, A + D resolves violet lasers, A + F + G sus4, Space dash.
+  // Your hearts never run out; hits are counted instead.
+  const Practice = (() => {
+    const SCALE_M = [60, 62, 64, 65, 67, 69, 71];
+    const deg = (d) => 60 + [0, 2, 4, 5, 7, 9, 11][d % 7] + 12 * Math.floor(d / 7);
+    const TRIADS = [0, 1, 3, 4, 5].map((d) => [deg(d), deg(d + 2), deg(d + 4)]);
+    const FIFTHS = [0, 1, 2, 3, 4, 5].map((d) => [deg(d), deg(d) + 7]);
+    const SHOTS = { single: { cost: 7, damage: 1.5, speed: 560 }, power: { cost: 16, damage: 5, speed: 820 }, triad: { cost: 24, damage: 3, speed: 600 } };
+    const SUS4 = { cost: 33, cooldown: 6, radius: 150 };
+    const NOTE_SPEED = 300, WARN = 0.7, LASER_WARN = 1.2, LASER_WIDTH = 16, MUZZLE = 26;
+    const TRACK = { follow: 2.2, maxSpeed: 220, miss: 35 };
+    const FAN = { notes: 6, gap: 0.12, fan: 1.0, warn: 0.7 };
+    const BOMB_HIT = 0.6;
+    const FAN_SYNTH = Sound.instrument('arp', { release: 0.2 });
+    let Q = null, on = new Set();
+
+    const py = () => FLOOR - 4; // the player's height in the arena
+
+    function start(attacks) {
+      on = new Set(attacks);
+      Sound.preload(['arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam', 'bomb-drop', 'bomb-impact', 'wave-roll']);
+      Q = {
+        boss: { x: W / 2, y: 58, target: W / 2, flash: 0, stun: 0, warn: 0 },
+        notes: [], shots: [], warnings: [], lasers: [], waves: [], rolls: [], fan: [], rings: [], sparks: [], texts: [], pickups: [],
+        held: null, meter: 0, stun: 0, safe: 0, sus4Cool: 0, hurtFlash: 0, banner: { text: 'Practice dummy: try your moves', t: 2.4 },
+        timers: { attack: 1.2, laser: 3, bomb: 4.5, fan: 3.5, held: 6, pickup: 8 },
+        stats: { hits: 0, cancelled: 0, resolved: 0 },
+      };
+      window.__practice = Q; // for automatic tests
+    }
+
+    function stop() {
+      if (!Q) return;
+      Q.lasers.forEach(endLaser);
+      Q.warnings.forEach((w) => w.drop && w.drop.stop(0.1));
+      Q.rolls.forEach((r) => r.sound && r.sound.stop(0.3));
+      if (Q.held) Q.held.sounds.forEach((x) => x.stop());
+      piano.setEnabled(true);
+      Q = null;
+      window.__practice = null;
+    }
+
+    // ---------- Your moves ----------
+    function release(notes) {
+      if (!Q || Q.stun > 0) return;
+      const has = (pc) => notes.has(pc);
+      if (has(C) && has(E) && !has(G) && Q.lasers.some((l) => l.cancellable && !l.gone)) return resolve();
+      if (has(C) && has(F) && has(G)) return sus4();
+      let kind = 'single';
+      if (has(C) && has(E) && has(G)) kind = 'triad';
+      else if (has(C) && has(G)) kind = 'power';
+      const a = SHOTS[kind];
+      const shot = (midi, angle, extra = {}) => Q.shots.push({ x: P.x, y: py() - 22, vx: Math.sin(angle) * a.speed, vy: -Math.cos(angle) * a.speed, midi, pcs: [midi % 12], kind, damage: a.damage, ...extra });
+      let cost = a.cost;
+      if (kind === 'power') shot(notes.get(C), 0, { pcs: [C, G], label: 'C+G' });
+      else if (kind === 'triad') [[C, -0.2], [E, 0], [G, 0.2]].forEach(([pc, ang]) => shot(notes.get(pc), ang));
+      else { cost = a.cost * notes.size; notes.forEach((midi) => shot(midi, 0)); }
+      addVolume(cost);
+    }
+    function addVolume(n) {
+      Q.meter = Math.min(100, Q.meter + n);
+      if (Q.meter >= 100) clip();
+    }
+    function clip() {
+      Q.stun = 2;
+      Q.meter = 70;
+      Q.banner = { text: 'You clipped!', t: 1.8, big: true };
+      Sound.squeal();
+      piano.setEnabled(false);
+    }
+    function sus4() {
+      if (Q.sus4Cool > 0) return say2('Sus4 is recharging.');
+      Q.sus4Cool = SUS4.cooldown;
+      Q.rings.push({ x: P.x, y: py() - 8, r: 10, t: 0.4 });
+      let cleared = 0;
+      for (const n of Q.notes) if (Math.hypot(n.x - P.x, n.y - py()) < SUS4.radius) { n.gone = true; cleared++; spark(n.x, n.y, '#E2D9FF', 3); }
+      for (const w of Q.waves) if (Math.abs(w.x - P.x) < SUS4.radius) { w.gone = true; cleared++; }
+      Sound.whoosh();
+      say2(cleared ? `Sus4! Cleared ${cleared}` : 'Sus4!');
+      addVolume(SUS4.cost);
+    }
+    function resolve() {
+      for (const l of Q.lasers) {
+        if (!l.cancellable || l.gone) continue;
+        endLaser(l);
+        const a = l.a ?? l.a0;
+        for (let i = 0; i < 12; i++) spark(Q.boss.x + Math.cos(a) * i * 26, Q.boss.y + MUZZLE + Math.sin(a) * i * 26, '#C8B8FF', 1);
+        Q.stats.resolved++;
+      }
+      Sound.chord([64, 72], 0, 1.2, 0.5);
+      say2('Resolved!');
+    }
+    function noteOn(pc) {
+      if (!Q || !Q.held || pc !== Q.held.missing) return;
+      Q.held.sounds.forEach((x) => x.stop());
+      Q.held = null;
+      Q.boss.stun = 1.6;
+      Sound.chord(Q.heldChord, 0, 1.4, 0.5);
+      Q.texts.push({ x: Q.boss.x, y: Q.boss.y + 60, text: 'Feedback cut!', t: 1.4 });
+      spark(Q.boss.x, Q.boss.y + 20, '#C8B8FF', 20);
+    }
+    function dashed() { if (Q) Q.safe = Math.max(Q.safe, 0.3); }
+    function say2(text) { Q.texts = Q.texts.filter((t) => !t.player); Q.texts.push({ x: P.x, y: py() - 46, text, t: 1.2, player: true }); }
+    function spark(x, y, color, n = 1) {
+      for (let i = 0; i < n; i++) { const a = rand(0, Math.PI * 2), v = rand(60, 220); Q.sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.3, 0.6), color }); }
+    }
+    function hurt() {
+      if (Q.safe > 0) return;
+      if (P.shield > 0) { Sound.block(); spark(P.x, py() - 10, '#E2D9FF', 3); return; }
+      Q.stats.hits++;
+      Q.safe = 1.1;
+      Q.hurtFlash = 0.4;
+      Sound.squeal();
+      spark(P.x, py() - 8, '#ff5d7a', 12);
+    }
+
+    // ---------- The dummy's attacks ----------
+    const muzzle = () => ({ x: Q.boss.x, y: Q.boss.y + MUZZLE });
+    function attack() {
+      const kinds = ['note', 'triad', 'fifth'].filter((k) => on.has(k));
+      if (!kinds.length) return;
+      const kind = kinds[Math.floor(Math.random() * kinds.length)];
+      const t = WARN + (kind === 'triad' ? 0.15 : kind === 'fifth' ? 0.1 : 0);
+      Q.warnings.push({ kind, t, total: t, tx: P.x, miss: rand(-TRACK.miss, TRACK.miss),
+        midi: SCALE_M[Math.floor(Math.random() * 7)], notes: kind === 'triad' ? TRIADS[Math.floor(Math.random() * 5)] : FIFTHS[Math.floor(Math.random() * 6)] });
+    }
+    function fire(w) {
+      const m = muzzle(), base = Math.atan2(py() - m.y, w.tx - m.x);
+      const launch = (notes, kind, speed, angle = base) => Q.notes.push({ x: m.x, y: m.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, midi: notes[0], notes, pcs: notes.map((x) => x % 12), kind });
+      if (w.kind === 'note') { launch([w.midi], 'note', NOTE_SPEED); Sound.note(w.midi, 0, 0.45, 0.4); }
+      else if (w.kind === 'triad') { w.notes.forEach((x, i) => launch([x], 'note', NOTE_SPEED * 0.9, base + (i - 1) * 0.24)); Sound.chord(w.notes, 0, 0.5, 0.45); }
+      else { launch(w.notes, 'fifth', NOTE_SPEED * 1.4); Sound.chord(w.notes, 0, 0.5, 0.5); }
+    }
+    function laserAngle(x) { const m = muzzle(); return Math.atan2(py() - m.y, x - m.x); }
+    function startLasers() {
+      const kinds = ['violet', 'red'].filter((k) => on.has(k));
+      const red = kinds[Math.floor(Math.random() * kinds.length)] === 'red';
+      const make = (fromX, toX, cancellable, silent) => ({ e: 0, dur: 2, a0: laserAngle(fromX), a1: laserAngle(toX), cancellable, stage: 'warn', sound: silent ? [] : [Sound.laser(cancellable ? 'violet' : 'red', 48, cancellable ? 0.09 : 0.12)] });
+      if (red) Q.lasers.push(make(20, P.x + 30, false), make(W - 20, P.x - 30, false, true));
+      else {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        Q.lasers.push(make(Math.min(W - 20, Math.max(20, P.x - dir * 280)), Math.min(W - 20, Math.max(20, P.x + dir * 280)), true));
+      }
+    }
+    function endLaser(l) { l.gone = true; l.sound.forEach((x) => x.stop()); }
+    function beamDistance(l, x, y) {
+      const m = muzzle(), dx = Math.cos(l.a), dy = Math.sin(l.a), px = x - m.x, pyy = y - m.y;
+      if (px * dx + pyy * dy < 0) return Infinity;
+      return Math.abs(px * dy - pyy * dx);
+    }
+    function startBomb() {
+      const x = Math.min(W - 60, Math.max(60, P.x + rand(-60, 60)));
+      Q.warnings.push({ kind: 'ground', t: 1.1, total: 1.1, x, drop: Sound.sfx('bomb-drop') });
+    }
+    function slam(w) {
+      if (w.drop) w.drop.stop(0.03);
+      const roll = { sound: Sound.loopNear('wave-roll', 36, BOMB_HIT) };
+      Q.rolls.push(roll);
+      Q.waves.push({ x: w.x, dir: -1, roll }, { x: w.x, dir: 1, roll });
+      if (!Sound.sfx('bomb-impact', BOMB_HIT)) Sound.hit();
+      Sound.chord([48, 55], 0, 0.7, 0.45);
+    }
+    function startFan() {
+      const m = muzzle();
+      Q.warnings.push({ kind: 'fan', t: FAN.warn, total: FAN.warn, chord: TRIADS[Math.floor(Math.random() * 5)], dir: Math.random() < 0.5 ? 1 : -1, centre: Math.atan2(py() - m.y, P.x - m.x) });
+    }
+    function fanOut(w) {
+      const up = [...w.chord, w.chord[0] + 12];
+      const run = [...up, ...up.slice(1, -1).reverse()].slice(0, FAN.notes);
+      run.forEach((midi, i) => Q.fan.push({ t: i * FAN.gap, midi, angle: w.centre + w.dir * FAN.fan * (i / (FAN.notes - 1) - 0.5) }));
+    }
+    function startHeld() {
+      const chord = TRIADS[0]; // C major
+      const missing = Math.floor(Math.random() * 3);
+      Q.heldChord = chord;
+      Q.held = { missing: chord[missing] % 12, t: 4.5, sounds: chord.filter((_, i) => i !== missing).map((x) => Sound.hold(x, 0.15)) };
+      const names = chord.map((x, i) => (i === missing ? '?' : name(x % 12))).join(' ');
+      Q.banner = { text: `It’s holding a chord: ${names}. Play the missing note!`, t: 3 };
+    }
+
+    // ---------- Update ----------
+    function update(dt) {
+      if (!Q) return;
+      const b = Q.boss;
+      Q.stun = Math.max(0, Q.stun - dt);
+      if (Q.stun <= 0) piano.setEnabled(true);
+      Q.safe = Math.max(0, Q.safe - dt);
+      Q.sus4Cool = Math.max(0, Q.sus4Cool - dt);
+      Q.meter = Math.max(0, Q.meter - 6 * dt);
+      Q.hurtFlash = Math.max(0, Q.hurtFlash - dt);
+      b.flash = Math.max(0, b.flash - dt);
+      b.stun = Math.max(0, b.stun - dt);
+      const holding = Q.lasers.length > 0 || Q.fan.length > 0;
+      if (Math.abs(b.target - b.x) < 4 || Math.random() < dt * 0.4) b.target = rand(140, W - 140);
+      if (b.stun <= 0 && !holding) b.x += Math.sign(b.target - b.x) * Math.min(Math.abs(b.target - b.x), 90 * dt);
+
+      const T = Q.timers;
+      for (const k of Object.keys(T)) T[k] -= dt * (holding && k === 'attack' ? 0.4 : 1);
+      if (b.stun <= 0) {
+        if (T.attack <= 0) { attack(); T.attack = 1.4 * rand(0.85, 1.15); }
+        if (T.laser <= 0 && !holding && (on.has('violet') || on.has('red'))) { startLasers(); T.laser = 8 * rand(0.85, 1.15); }
+        if (T.bomb <= 0 && !holding && on.has('bomb')) { startBomb(); T.bomb = 6.5 * rand(0.85, 1.15); }
+        if (T.fan <= 0 && !holding && on.has('arp')) { startFan(); T.fan = 6 * rand(0.85, 1.15); }
+        if (T.held <= 0 && !Q.held && on.has('held')) { startHeld(); T.held = rand(9, 12); }
+      }
+      if (T.pickup <= 0) { Q.pickups.push({ x: rand(60, W - 60), y: -20 }); T.pickup = rand(12, 16); }
+      if (Q.held) {
+        Q.held.t -= dt;
+        if (Q.held.t <= 0) { Q.held.sounds.forEach((x) => x.stop()); Q.held = null; }
+      }
+
+      // Warnings: aimed ones follow you with a lag, then fire straight.
+      for (const w of Q.warnings) {
+        w.t -= dt;
+        if (w.tx !== undefined) {
+          const want = P.x + w.miss - w.tx, step = want * (1 - Math.exp(-TRACK.follow * dt));
+          w.tx += Math.sign(step) * Math.min(Math.abs(step), TRACK.maxSpeed * dt);
+        }
+      }
+      Q.warnings.filter((w) => w.t <= 0).forEach((w) => (w.kind === 'ground' ? slam(w) : w.kind === 'fan' ? fanOut(w) : fire(w)));
+      Q.warnings = Q.warnings.filter((w) => w.t > 0);
+      b.warn = Q.warnings.length || Q.lasers.length ? 1 : 0;
+      Q.fan.forEach((f) => { f.t -= dt; });
+      for (const f of Q.fan.filter((x) => x.t <= 0)) {
+        const m = muzzle(), sp = NOTE_SPEED * 0.85;
+        Q.notes.push({ x: m.x, y: m.y, vx: Math.cos(f.angle) * sp, vy: Math.sin(f.angle) * sp, midi: f.midi, notes: [f.midi], pcs: [f.midi % 12], kind: 'arp' });
+        FAN_SYNTH.note(f.midi + 12, 0, 0.3, 0.3);
+      }
+      Q.fan = Q.fan.filter((x) => x.t > 0);
+
+      for (const l of Q.lasers) {
+        if (l.gone) continue;
+        l.e += dt;
+        const k = (l.e - LASER_WARN) / l.dur;
+        if (k >= 0 && l.stage === 'warn') l.sound.forEach((v) => v.live && v.live());
+        l.a = l.a0 + (l.a1 - l.a0) * k;
+        l.stage = k < 0 ? 'warn' : 'sweep';
+        if (k >= 1) { endLaser(l); continue; }
+        if (l.stage === 'sweep' && beamDistance(l, P.x, py() - 6) < LASER_WIDTH) hurt();
+      }
+      Q.lasers = Q.lasers.filter((l) => !l.gone);
+
+      for (const w of Q.waves) { w.x += w.dir * 300 * dt; if (!w.gone && Math.abs(w.x - P.x) < 16) { w.gone = true; hurt(); } }
+      Q.waves = Q.waves.filter((w) => !w.gone && w.x > -20 && w.x < W + 20);
+      Q.rolls = Q.rolls.filter((r) => { if (Q.waves.some((w) => w.roll === r)) return true; if (r.sound) r.sound.stop(0.4); return false; });
+
+      Q.notes.forEach((n) => { n.x += n.vx * dt; n.y += n.vy * dt; });
+      Q.shots.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; });
+      Q.pickups.forEach((k) => { k.y += 70 * dt; });
+      Q.sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+      Q.texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
+      Q.rings.forEach((r) => { r.t -= dt; r.r += (SUS4.radius / 0.4) * dt; });
+      if (Q.banner) { Q.banner.t -= dt; if (Q.banner.t <= 0) Q.banner = null; }
+
+      for (const s of Q.shots) {
+        for (const n of Q.notes) {
+          if (n.gone || s.gone) continue;
+          if (n.pcs.some((pc) => s.pcs.includes(pc)) && Math.hypot(n.x - s.x, n.y - s.y) < (s.kind === 'power' ? 34 : 26) + (n.kind === 'fifth' ? 6 : 0)) {
+            n.gone = s.gone = true;
+            spark(n.x, n.y, '#C8B8FF', 8);
+            Sound.note(n.midi + 12, 0, 0.25, 0.18);
+            Q.meter = Math.max(0, Q.meter - 7);
+            Q.stats.cancelled++;
+          }
+        }
+        if (!s.gone && Math.abs(s.x - b.x) < 46 && s.y < b.y + 36 && s.y > b.y - 36) {
+          s.gone = true;
+          b.flash = 0.15;
+          Sound.hit();
+          Q.texts.push({ x: b.x + rand(-20, 20), y: b.y - 30, text: `-${s.damage}`, t: 0.8 });
+        }
+      }
+      for (const n of Q.notes) if (!n.gone && Math.hypot(n.x - P.x, n.y - (py() - 6)) < (n.kind === 'fifth' ? 26 : 22)) { n.gone = true; hurt(); }
+      for (const k of Q.pickups) {
+        if (!k.gone && Math.abs(k.x - P.x) < 30 && Math.abs(k.y - py()) < 30) { k.gone = true; P.shield = 5; Sound.note(84, 0, 0.6, 0.25); say2('Ear defenders!'); }
+      }
+      Q.notes = Q.notes.filter((n) => !n.gone && n.y < H + 20 && n.x > -20 && n.x < W + 20);
+      Q.shots = Q.shots.filter((s) => !s.gone && s.y > -20 && s.x > -20 && s.x < W + 20);
+      Q.pickups = Q.pickups.filter((k) => !k.gone && k.y < H + 20);
+      Q.sparks = Q.sparks.filter((s) => s.t > 0);
+      Q.texts = Q.texts.filter((t) => t.t > 0);
+      Q.rings = Q.rings.filter((r) => r.t > 0);
+    }
+
+    // ---------- Drawing ----------
+    function draw() {
+      if (!Q) return;
+      const b = Q.boss;
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#16141c'); bg.addColorStop(1, '#0f0e13');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(94, 62, 132, 0.35)'; ctx.fillRect(0, FLOOR + 10, W, 2);
+      const m = muzzle();
+      for (const w of Q.warnings) {
+        const k = 1 - w.t / w.total;
+        if (w.kind === 'ground') {
+          ctx.fillStyle = `rgba(255, 93, 122, ${0.15 + 0.35 * k})`; ctx.fillRect(w.x - 40, FLOOR + 6, 80, 6);
+          const bx = m.x + (w.x - m.x) * k, by = m.y + (FLOOR - m.y) * k * k;
+          ctx.fillStyle = '#ff5d7a'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(bx, by, 11, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+          continue;
+        }
+        ctx.setLineDash([6, 8]); ctx.lineWidth = w.kind === 'fifth' ? 4 : 2;
+        if (w.kind === 'fan') {
+          ctx.strokeStyle = `rgba(217, 194, 122, ${0.12 + k * 0.4})`;
+          for (let i = 0; i < FAN.notes; i++) { const a = w.centre + w.dir * FAN.fan * (i / (FAN.notes - 1) - 0.5); ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x + Math.cos(a) * 340, m.y + Math.sin(a) * 340); ctx.stroke(); }
+        } else {
+          ctx.strokeStyle = `rgba(200, 184, 255, ${0.15 + k * 0.45})`;
+          const base = Math.atan2(py() - m.y, w.tx - m.x);
+          for (const off of w.kind === 'triad' ? [-0.24, 0, 0.24] : [0]) { ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x + Math.cos(base + off) * 400, m.y + Math.sin(base + off) * 400); ctx.stroke(); }
+        }
+        ctx.setLineDash([]);
+      }
+      for (const l of Q.lasers) {
+        const a = l.a ?? l.a0, ex = m.x + Math.cos(a) * 900, ey = m.y + Math.sin(a) * 900;
+        const color = l.cancellable ? '200, 184, 255' : '255, 70, 100';
+        if (l.stage === 'warn') {
+          const k = Math.min(1, l.e / LASER_WARN);
+          ctx.strokeStyle = `rgba(${color}, ${0.15 + 0.25 * k})`; ctx.lineWidth = 6 + 10 * k;
+          ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(ex, ey); ctx.stroke();
+          continue;
+        }
+        ctx.shadowColor = `rgb(${color})`; ctx.shadowBlur = 24;
+        ctx.strokeStyle = `rgba(${color}, 0.55)`; ctx.lineWidth = 16;
+        ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      // The dummy: a practice speaker with a target on it
+      ctx.save();
+      ctx.translate(b.x + (b.stun > 0 ? Math.sin(time * 30) * 3 : 0), b.y);
+      ctx.fillStyle = b.flash > 0 ? '#E2D9FF' : '#26232d';
+      ctx.strokeStyle = '#9A7FE0'; ctx.lineWidth = 3; ctx.shadowColor = '#9A7FE0'; ctx.shadowBlur = 8 + b.warn * 18;
+      roundRect(-40, -34, 80, 68, 10); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      for (const [r, c] of [[24, '#ff8fa6'], [16, '#E2D9FF'], [8, '#ff8fa6']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#9A93A3'; ctx.font = '600 11px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(b.stun > 0 ? 'STUNNED' : 'DUMMY', 0, -42);
+      ctx.restore();
+
+      for (const w of Q.waves) {
+        ctx.fillStyle = 'rgba(255, 93, 122, 0.85)'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.moveTo(w.x - 12, FLOOR + 10); ctx.quadraticCurveTo(w.x, FLOOR - 28, w.x + 12, FLOOR + 10); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      for (const n of Q.notes) {
+        const fifth = n.kind === 'fifth', color = n.kind === 'arp' ? '#d9c27a' : fifth ? '#C8B8FF' : '#8fc4ff';
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = fifth ? 22 : 14;
+        if (fifth) { roundRect(n.x - 22, n.y - 11, 44, 22, 11); ctx.fill(); } else { ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI * 2); ctx.fill(); }
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#181818'; ctx.font = '600 10px Oswald, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(n.notes.map((x) => name(x % 12)).join('+'), n.x, n.y + 4);
+      }
+      for (const s of Q.shots) {
+        const power = s.kind === 'power', color = power ? '#E2D9FF' : s.kind === 'triad' ? '#C8B8FF' : '#9A7FE0';
+        const w = power ? 50 : 24, h = power ? 24 : 18;
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = power ? 22 : 10;
+        roundRect(s.x - w / 2, s.y - h / 2, w, h, 6); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#181818'; ctx.font = '600 11px Oswald, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(s.label || name(s.midi % 12), s.x, s.y + 4);
+      }
+      for (const r of Q.rings) { ctx.strokeStyle = `rgba(226, 217, 255, ${r.t / 0.4})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke(); }
+      for (const k of Q.pickups) drawHeadphones(k.x, k.y, 0.7, '#E2D9FF', true);
+
+      // You
+      for (const t of P.trail) { ctx.globalAlpha = t.t / 0.25 * 0.4; drawHeadphones(t.x, py(), 1, '#9A7FE0', false); }
+      ctx.globalAlpha = (Q.safe > 0 && Math.floor(time * 20) % 2 === 0) ? 0.35 : 1;
+      if (P.shield > 0) { ctx.strokeStyle = `rgba(226, 217, 255, ${0.4 + 0.3 * Math.sin(time * 10)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(P.x, py() - 6, 30, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.strokeStyle = Q.sus4Cool <= 0 ? 'rgba(226, 217, 255, 0.7)' : 'rgba(154, 147, 163, 0.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(P.x, py() - 6, 36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - Q.sus4Cool / SUS4.cooldown)); ctx.stroke();
+      drawHeadphones(P.x, py(), 1, Q.stun > 0 ? '#5d5866' : P.shield > 0 ? '#E2D9FF' : '#9A7FE0', P.shield > 0);
+      ctx.globalAlpha = 1;
+
+      for (const s of Q.sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.6); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+      ctx.globalAlpha = 1;
+      for (const t of Q.texts) { ctx.globalAlpha = Math.min(1, t.t * 2); ctx.fillStyle = '#C8B8FF'; ctx.font = '600 15px Oswald, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(t.text, t.x, t.y); }
+      ctx.globalAlpha = 1;
+      if (Q.hurtFlash > 0) { ctx.fillStyle = `rgba(255, 40, 70, ${0.25 * Q.hurtFlash / 0.4})`; ctx.fillRect(0, 0, W, H); }
+
+      // HUD
+      ctx.textAlign = 'left'; ctx.font = '600 13px Oswald, sans-serif'; ctx.fillStyle = '#E6E1EC';
+      ctx.fillText('PRACTICE', 14, 22);
+      ctx.font = '500 11px Oswald, sans-serif'; ctx.fillStyle = '#9A93A3';
+      ctx.fillText(`HITS TAKEN ${Q.stats.hits}  ·  CANCELLED ${Q.stats.cancelled}  ·  RESOLVED ${Q.stats.resolved}`, 14, 40);
+      ctx.fillStyle = '#ff5d7a'; ctx.font = '600 18px Oswald, sans-serif'; ctx.fillText('♥ ∞', 14, H - 12);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#E6E1EC'; ctx.font = '600 13px Oswald, sans-serif';
+      ctx.fillText('VOLUME', W - 186, 22);
+      ctx.fillStyle = '#26232d'; roundRect(W - 176, 12, 160, 11, 5); ctx.fill();
+      const mg = ctx.createLinearGradient(W - 176, 0, W - 16, 0);
+      mg.addColorStop(0, '#9A7FE0'); mg.addColorStop(0.7, '#c46a7a'); mg.addColorStop(1, '#ff5d7a');
+      ctx.fillStyle = mg; roundRect(W - 176, 12, 160 * Q.meter / 100, 11, 5); ctx.fill();
+      if (P.shield > 0) { ctx.fillStyle = '#E2D9FF'; ctx.font = '500 11px Oswald, sans-serif'; ctx.fillText(`EAR DEFENDERS ${Math.ceil(P.shield)}`, W - 16, 40); }
+      if (Q.banner) {
+        ctx.globalAlpha = Math.min(1, Q.banner.t * 1.5); ctx.textAlign = 'center';
+        ctx.font = Q.banner.big ? '600 38px Oswald, sans-serif' : '600 20px Oswald, sans-serif';
+        ctx.fillStyle = Q.banner.big ? '#ff5d7a' : '#C8B8FF';
+        ctx.fillText(Q.banner.text, W / 2, H / 2 + 20);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    return { start, stop, update, draw, release, noteOn, dashed, get state() { return Q; } };
+  })();
 </script>
 </body>
 </html>

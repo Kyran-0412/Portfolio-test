@@ -32,6 +32,24 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## Tutorial free play and practice mode
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/public/progress.js` | Public file `progress.js` (records boss attempts) |
+| `wix/public/game-site.js` | Public file `game-site.js` (passes attempts to the levels) |
+| `wix/embeds/level-c.html` | Level C page's Embed HTML box |
+| `wix/embeds/level-a.html`, `level-fsharp.html`, `level-f.html` | The three boss pages (they report an attempt when the fight starts) |
+
+Free play has three buttons: the big COLLECT KEY (or RETURN HOME if C is already won), Practice mode and
+Redo tutorial. Players who already have C go straight to free play. Practice mode opens once Feedback
+has been attempted (a tooltip says so until then): pick any of the unlocked attacks (Feedback: single
+notes, triads, held chord; the Tritone: fifths, violet and red lasers; the Final Boss: bombs, arpeggio
+fans), press Practise, and a dummy boss uses them. Hearts are infinite; hits, cancels and resolves are
+counted. Beaten bosses count as attempted.
+
 ## The Tutorial, now with every boss move
 
 **Files to update in Wix**

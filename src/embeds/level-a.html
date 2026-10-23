@@ -165,6 +165,7 @@
   window.__drone = () => drone; // for automatic tests
 
   function begin(phase) {
+    Level.attempted(); // unlocks this boss's attacks in the Tutorial's practice mode
     newState(phase);
     startMusic();
     S.running = true;

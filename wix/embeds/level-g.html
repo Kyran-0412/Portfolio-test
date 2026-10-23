@@ -1113,6 +1113,8 @@ const Level = (() => {
   let key = null;
   let testMode = false;
   let extraHearts = 0;
+  let status = 'new';
+  let tried = [];
   let onStart = () => {};
   let usesPiano = true;
   let finishing = false;
@@ -1191,6 +1193,8 @@ const Level = (() => {
     key = message.key;
     testMode = message.testMode === true;
     extraHearts = Number(message.extraHearts) || 0;
+    status = message.status === 'beaten' ? 'beaten' : 'new';
+    tried = Array.isArray(message.tried) ? message.tried : [];
     if (touchOnly) return show('phone');
     $('introEyebrow').textContent = `Level ${KEYS.indexOf(key) + 1} · Key of ${keyLabel(key)}`;
     $('introTitle').textContent = KEY_INFO[key].level;
@@ -1257,6 +1261,12 @@ const Level = (() => {
     get testMode() { return testMode; },
     // Hidden hearts found so far: boss fights add these to the starting hearts.
     get extraHearts() { return extraHearts; },
+    // 'beaten' if this level's key is already won, otherwise 'new'.
+    get status() { return status; },
+    // Boss fights attempted so far, e.g. ['A', 'F#'] (unlocks practice attacks).
+    get tried() { return tried; },
+    // A boss fight calls this when it starts, so the attempt is remembered.
+    attempted() { Bridge.send({ type: 'attempted' }); },
     back() { Bridge.send({ type: 'navigate', to: 'back' }); },
     // description: the line under the title on the intro screen.
     // piano: false hides the on-screen piano for levels that don't use it.

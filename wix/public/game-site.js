@@ -11,6 +11,8 @@ import {
   CIRCLE_PATH,
   LEVEL_PATHS,
   emptyProgress,
+  markTried,
+  triedBosses,
   parseProgress,
   isDoorOpen,
   doorState,
@@ -91,7 +93,14 @@ export function setupLevel(selector, key) {
       // Test buttons only appear in Preview, never on the live site.
       const testMode = wixWindowFrontend.viewMode === 'Preview';
       const extraHearts = loadProgress().hearts.length; // hidden hearts found so far
-      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new', testMode, extraHearts });
+      const tried = triedBosses(loadProgress());     // boss fights attempted (for practice mode)
+      embed.postMessage({ type: 'level', key, status: beaten ? 'beaten' : 'new', testMode, extraHearts, tried });
+    },
+    // A boss fight has started: remember it was attempted.
+    attempted: () => {
+      const before = loadProgress();
+      const after = markTried(before, key);
+      if (after !== before) saveProgress(after);
     },
     levelComplete: (message) => {
       const before = loadProgress();

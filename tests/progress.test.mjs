@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  KEYS, LEVEL_PATHS, emptyProgress, nextKey, isDoorOpen, isCircleComplete, doorState,
+  KEYS, LEVEL_PATHS, emptyProgress, markTried, triedBosses, nextKey, isDoorOpen, isCircleComplete, doorState,
   completeLevel, placeKey, markIntroSeen, parseProgress, addHeart,
 } from '../wix/public/progress.js';
 import { readFileSync } from 'node:fs';
@@ -53,12 +53,12 @@ test('broken or tampered storage is repaired', () => {
   assert.deepEqual(parseProgress('"text"'), emptyProgress());
   assert.deepEqual(
     parseProgress(JSON.stringify({ placed: ['C', 'G', 'A'], held: ['A', 'D', 'E'], seenIntro: true })),
-    { v: 1, placed: ['C', 'G'], held: ['D'], seenIntro: true, hearts: [] },
+    { v: 1, placed: ['C', 'G'], held: ['D'], seenIntro: true, hearts: [], tried: [] },
     'keeps only the next key, drops placed keys out of order',
   );
   assert.deepEqual(
     parseProgress(JSON.stringify({ placed: ['C'], held: ['G'] })),
-    { v: 1, placed: ['C'], held: ['G'], seenIntro: false, hearts: [] },
+    { v: 1, placed: ['C'], held: ['G'], seenIntro: false, hearts: [], tried: [] },
   );
 });
 
@@ -95,4 +95,15 @@ test('hidden hearts: only in E and B, once each, once the door is open', () => {
   assert.equal(addHeart(p, 'E'), p, 'found once');
   assert.deepEqual(parseProgress(JSON.stringify({ ...p, hearts: ['E', 'E', 'X'] })).hearts, ['E']);
   assert.deepEqual(parseProgress(JSON.stringify({ placed: [] })).hearts, []);
+});
+
+test('boss attempts are recorded once each, and beaten bosses count as attempted', () => {
+  let p = markTried(emptyProgress(), 'A');
+  assert.deepEqual(p.tried, ['A']);
+  assert.equal(markTried(p, 'A'), p, 'only once');
+  assert.equal(markTried(p, 'G'), p, 'only boss levels');
+  assert.deepEqual(triedBosses(p), ['A']);
+  const beaten = { ...emptyProgress(), placed: ['C', 'G', 'D', 'A', 'E', 'B', 'F#'] };
+  assert.deepEqual(triedBosses(beaten), ['A', 'F#'], 'beaten before attempts were recorded');
+  assert.deepEqual(parseProgress(JSON.stringify({ v: 1, placed: [], held: [], tried: ['F', 'nonsense', 'A'] })).tried, ['A', 'F']);
 });
