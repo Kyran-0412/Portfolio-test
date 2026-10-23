@@ -42,7 +42,7 @@
   const W = 900, H = 400;
   const ROOT = 54; // F♯3
   // The boss's own synth (your attacks stay on the piano), and a drone in D♯ minor.
-  const BOSS = Sound.instrument('tritone', { release: 0.7 });
+  const BOSS = Sound.instrument('tritone', { release: 0.7, gain: 1.35 }); // gain: its level next to the piano
   const DRONE = 'tritone-drone';
   let drone = null;
   function startMusic() { stopMusic(0.3); drone = Sound.track(DRONE, { fadeIn: 1.5 }); }
