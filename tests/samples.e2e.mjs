@@ -214,8 +214,17 @@ try {
   await zg.locator('#startBtn').click();
   const zf = page.frames().find((f) => f.url().includes('level-aflat.html'));
   await zf.waitForFunction(() => Sound.samples.done && Sound.has('arp'), null, { timeout: 8000 });
-  assert.equal(await zg.locator('#sampleStatus').textContent(), `Samples: ${total + 12} / ${total + 12} loaded`, 'piano + 12 arp notes');
-  await zg.locator('#weapon-arp').click();
+  assert.equal(await zg.locator('#sampleStatus').textContent(), `Samples: ${total + 16} / ${total + 16} loaded`, 'piano + 12 arp notes + 4 drones');
+  const droneRate = await zf.evaluate(() => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    document.querySelector('#weapon-arp').click();
+    a.createBufferSource = orig;
+    return made.find((x) => x.loop).playbackRate.value;
+  });
+  assert.ok(Math.abs(droneRate - Math.pow(2, -1 / 12)) < 1e-4, 'F minor: the F♯ minor drone down a semitone');
+  assert.ok(await zf.evaluate(() => window.__drone() !== null), 'the drone plays during the run');
   const shot = await zf.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a);

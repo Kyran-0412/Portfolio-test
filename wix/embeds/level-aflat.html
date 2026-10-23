@@ -1265,6 +1265,11 @@ const Level = (() => {
   const AB_ARP = [56, 60, 63, 68, 72, 75];           // A♭ major arpeggio, rising
   const AB_PENTA = [68, 70, 72, 75, 77, 80];         // A♭ major pentatonic for kills
   const ARP = Sound.instrument('arp', { release: 0.15 }); // the Arpeggiator's pluck (shared with the Final Boss's fans)
+  // A drone in F minor (A♭'s relative minor) under the whole run: the Final
+  // Boss's drone set, shifted to F. It carries on through upgrades and retries.
+  const DRONE_ROOT = 53; // F
+  let drone = null;
+  window.__drone = () => drone; // for automatic tests
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -1359,7 +1364,7 @@ const Level = (() => {
             <div class="buttons" id="endButtons"></div>
           </div>
         </div>`;
-      Sound.preload(['arp']);
+      Sound.preload(['arp', 'circle-drone']);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -1411,6 +1416,7 @@ const Level = (() => {
 
   function chooseWeapon(id) {
     S.weapon = id;
+    if (!drone) drone = Sound.trackNear('circle-drone', DRONE_ROOT, { fadeIn: 2 });
     S.ammo = clipSize();
     ui.choose.classList.remove('show');
     Sound.unlock();
@@ -1665,6 +1671,7 @@ const Level = (() => {
 
   function win() {
     S.mode = 'won';
+    if (drone) { drone.stop(2.5); drone = null; }
     mouse.down = false;
     Sound.chord([44, 56, 60, 63, 68], 0, 2.4, 0.55);
     ui.endTitle.textContent = 'Survived';
