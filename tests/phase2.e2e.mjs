@@ -13,15 +13,30 @@ page.on('dialog', (d) => d.accept());
 
 // Beats the C tutorial with the computer keyboard.
 async function playTutorial(game) {
+  const tut = (fn) => page.frames().find((f) => f.url().includes('level-c.html')).evaluate(fn);
+  const chord = async (...ks) => { for (const k of ks) await page.keyboard.down(k); for (const k of ks) await page.keyboard.up(k); await page.waitForTimeout(150); };
   await game.locator('#instruction', { hasText: 'Press A' }).waitFor();
   await page.keyboard.press('a');
   await game.locator('#instruction', { hasText: 'scale' }).waitFor();
   for (const k of 'asdfghjk') await page.keyboard.press(k);
-  await game.locator('#instruction', { hasText: 'fifth' }).waitFor();
-  await page.keyboard.down('a');
-  await page.keyboard.down('g');
-  await page.keyboard.up('g');
-  await page.keyboard.up('a');
+  await game.locator('#instruction', { hasText: 'Move' }).waitFor();
+  await tut(() => { window.__tut.P.x = 100; });
+  await page.waitForTimeout(100);
+  await tut(() => { window.__tut.P.x = 800; });
+  await game.locator('#instruction', { hasText: 'Dash' }).waitFor();
+  await page.keyboard.press('Space');
+  await game.locator('#instruction', { hasText: 'Power shot' }).waitFor();
+  await chord('a', 'g');
+  await game.locator('#instruction', { hasText: 'Triad' }).waitFor({ timeout: 4000 });
+  await chord('a', 'd', 'g');
+  await game.locator('#instruction', { hasText: 'Resolve' }).waitFor();
+  await chord('a', 'd');
+  await game.locator('#instruction', { hasText: 'Sus4' }).waitFor({ timeout: 4000 });
+  await chord('a', 'f', 'g');
+  await game.locator('#instruction', { hasText: 'ear defenders' }).waitFor({ timeout: 4000 });
+  await tut(() => { window.__tut.P.x = window.__tut.pickup.x; });
+  await game.locator('#collect:not([hidden])').waitFor({ timeout: 4000 });
+  await game.locator('#collect').click();
 }
 
 try {

@@ -43,19 +43,71 @@ try {
   for (const k of 'hjk') await page.keyboard.press(k);
   console.log('✓ step 2: scale with a mistake, a clicked note and an octave change');
 
-  // Step 3: a fifth needs both notes held together.
-  await game.locator('#instruction', { hasText: 'Play a perfect fifth' }).waitFor();
-  await page.keyboard.press('g');
-  assert.match(await text('#feedback'), /Keep holding G and add C/);
-  await page.keyboard.down('a');
-  await page.keyboard.down('g');
-  await game.locator('#feedback', { hasText: 'perfect fifth' }).waitFor();
-  await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-step3.png` });
-  await page.keyboard.up('g');
-  await page.keyboard.up('a');
+  const tut = (fn, arg) => page.frames().find((f) => f.url().includes('level-c.html')).evaluate(fn, arg);
+  const chord = async (...ks) => { for (const k of ks) await page.keyboard.down(k); for (const k of ks) await page.keyboard.up(k); await page.waitForTimeout(150); };
+  const holdUntil = async (key, test) => {
+    await page.keyboard.down(key);
+    await page.waitForFunction(test, null, { timeout: 4000, polling: 'raf' }).catch(() => {});
+    await page.keyboard.up(key);
+  };
+  const xOf = () => `[...document.querySelectorAll('iframe')].find((f) => f.src.includes('level-c')).contentWindow.__tut.P.x`;
+
+  // Step 3: walk to both markers with the arrow keys.
+  await game.locator('#instruction', { hasText: 'Move with ← and →' }).waitFor();
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-move.png` });
+  await holdUntil('ArrowLeft', new Function(`return ${xOf()} < 190`));
+  await game.locator('.dot.on').first().waitFor();
+  await holdUntil('ArrowRight', new Function(`return ${xOf()} > 710`));
+  console.log('✓ step 3: arrow keys move the player to both markers');
+
+  // Step 4: dash.
+  await game.locator('#instruction', { hasText: 'Dash with Space' }).waitFor();
+  await page.keyboard.press('Space');
+  console.log('✓ step 4: Space dashes');
+
+  // Step 5: power shot (A + G): one big shot rising from the player.
+  await game.locator('#instruction', { hasText: 'Power shot' }).waitFor();
+  await chord('a', 'g');
+  assert.equal(await tut(() => document.querySelector('#feedback').textContent.includes('perfect fifth')), true);
+  console.log('✓ step 5: A + G fires the power shot');
+
+  // Step 6: triad.
+  await game.locator('#instruction', { hasText: 'Triad' }).waitFor();
+  await chord('a', 'd', 'g');
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-triad.png` });
+  console.log('✓ step 6: A + D + G fires the triad');
+
+  // Step 7: resolve the practice laser.
+  await game.locator('#instruction', { hasText: 'Resolve the laser' }).waitFor();
+  assert.ok(await tut(() => window.__tut.laser !== null), 'a practice laser appears');
+  await page.waitForTimeout(500);
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-laser.png` });
+  await chord('a', 'd');
+  assert.equal(await tut(() => window.__tut.laser), null, 'resolved');
+  console.log('✓ step 7: A + D resolves the laser');
+
+  // Step 8: sus4 clears the floating notes.
+  await game.locator('#instruction', { hasText: 'Sus4' }).waitFor();
+  assert.equal(await tut(() => window.__tut.floaters.length), 5);
+  await chord('a', 'f', 'g');
+  assert.equal(await tut(() => window.__tut.floaters.length), 0, 'the shockwave clears them');
+  console.log('✓ step 8: A + F + G shockwave clears the notes');
+
+  // Step 9: catch the ear defenders.
+  await game.locator('#instruction', { hasText: 'Catch the ear defenders' }).waitFor();
+  await tut(() => { window.__tut.P.x = window.__tut.pickup.x; });
+  await game.locator('#collect:not([hidden])').waitFor({ timeout: 4000 });
+  console.log('✓ step 9: catching the ear defenders');
+
+  // Free play: moves still work, and COLLECT KEY finishes the level.
+  assert.equal(await game.locator('#instruction').textContent(), 'You know every move');
+  await chord('a', 'g');
+  assert.ok(await tut(() => document.querySelectorAll('#found.show').length === 0), 'free play: the level keeps going');
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/p3-free.png` });
+  await game.locator('#collect').click();
   await game.locator('#found.show').waitFor({ timeout: 5000 });
   assert.equal(await text('#foundTitle'), 'You found the key of C.');
-  console.log('✓ step 3: fifth played, key found');
+  console.log('✓ free play, then COLLECT KEY gives the key of C');
 
   // Placeholder levels have the working piano too.
   await page.goto(`${base}/dev/sim.html?page=home`);

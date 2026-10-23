@@ -32,6 +32,20 @@ Everything you copy into Wix is in `wix/`. Paste each file in whole.
 | `src/` | Source for the embeds (`npm run build` turns these into `wix/embeds/`) | Not used in Wix |
 | `dev/`, `tests/` | Local copy of the site and automatic checks | Not used in Wix |
 
+## The Tutorial, now with every boss move
+
+**Files to update in Wix**
+
+| File | Where |
+| --- | --- |
+| `wix/embeds/level-c.html` | Level C page's Embed HTML box |
+
+Your player stands above the keyboard. Nine steps: press A for C, the C major scale, move with ← →
+to two markers, dash with Space, power shot (A + G), triad (A + D + G), resolve a practice laser
+(A + D), sus4 shockwave (A + F + G) to clear floating notes, and catch falling ear defenders. Every
+shot fires from the player and fades. After that it's free play (practice lasers and ear defenders
+keep coming) with a big COLLECT KEY button that finishes the level.
+
 ## Boss synths (all three in)
 
 **Files to update in Wix**

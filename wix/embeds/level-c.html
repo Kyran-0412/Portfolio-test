@@ -69,10 +69,11 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 #piano[hidden] { display: none; }
 .skip { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 6px 12px; font-size: 12px; background: var(--panel); border-color: var(--accent); color: var(--quiet); }
 .skip[hidden] { display: none; }
-.sample-status { position: absolute; bottom: 12px; left: 12px; z-index: 5; font: 500 12px var(--heading); letter-spacing: 0.06em; color: var(--glow); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px; }
+.preview-tools { position: absolute; top: 8px; left: 12px; z-index: 5; display: flex; gap: 8px; align-items: center; }
+.sample-status { font: 500 12px var(--heading); letter-spacing: 0.06em; color: var(--glow); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px; }
 .sample-status.bad { color: #ff8fa6; border-color: #c46a7a; }
 .sample-status[hidden] { display: none; }
-.reverb-test { position: absolute; bottom: 44px; left: 12px; z-index: 5; padding: 4px 10px; font: 500 12px var(--heading); letter-spacing: 0.06em; background: var(--panel); border-color: var(--accent); color: var(--glow); }
+.reverb-test { padding: 4px 10px; font: 500 12px var(--heading); letter-spacing: 0.06em; background: var(--panel); border-color: var(--accent); color: var(--glow); }
 .reverb-test[hidden] { display: none; }
 
 /* Piano */
@@ -113,13 +114,24 @@ button.primary { background: var(--mid); border-color: var(--bright); }
 .heart-found[hidden] { display: none; }
 </style>
 <style>
+  #play { padding-top: 8px; }
+  .stage { gap: 6px; }
   .step { font: 500 13px var(--heading); letter-spacing: 0.18em; text-transform: uppercase; color: var(--bright); }
-  #instruction { font-size: 38px; }
-  .dots { display: flex; gap: 10px; height: 14px; margin: 4px 0; }
+  #instruction { font-size: 32px; }
+  #hint { min-height: 1.3em; }
+  .dots { display: flex; gap: 10px; height: 14px; margin: 2px 0; }
   .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--violet); border: 1px solid var(--accent); transition: background 0.3s, box-shadow 0.3s; }
   .dot.on { background: var(--bright); box-shadow: 0 0 10px rgba(200, 184, 255, 0.8); }
-  #feedback { min-height: 1.5em; color: var(--glow); }
+  #feedback { min-height: 1.4em; color: var(--glow); }
   #feedback.bad { color: #e7a3b0; }
+  canvas { display: block; width: 900px; max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
+  #collect {
+    font: 600 22px var(--heading); letter-spacing: 0.14em; padding: 12px 48px; margin-top: 2px;
+    background: var(--mid); border-color: var(--glow); color: #fff;
+    box-shadow: 0 0 24px rgba(200, 184, 255, 0.55); animation: collect 1.6s ease-in-out infinite;
+  }
+  #collect[hidden] { display: none; }
+  @keyframes collect { 0%, 100% { box-shadow: 0 0 14px rgba(200, 184, 255, 0.45); } 50% { box-shadow: 0 0 30px rgba(200, 184, 255, 0.9); } }
 </style>
 </head>
 <body>
@@ -1116,8 +1128,10 @@ const Level = (() => {
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
       <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
-      <div class="sample-status" id="sampleStatus" hidden></div>
-      <button class="reverb-test" id="reverbTest" hidden>Reverb: normal</button>
+      <div class="preview-tools">
+        <div class="sample-status" id="sampleStatus" hidden></div>
+        <button class="reverb-test" id="reverbTest" hidden>Reverb: normal</button>
+      </div>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
@@ -1265,78 +1279,173 @@ const Level = (() => {
 })();
 </script>
 <script>
-  // Level 1, key of C: learn the keyboard, play the C major scale, play a fifth.
+  // Level 1, key of C: the Tutorial. Learn the keyboard and the scale, then
+  // every move the boss fights use: moving, dashing, the power shot, the
+  // triad, resolving a laser, the sus4 shockwave and catching ear defenders.
+  // Each move fires from your player above the keyboard and fades out. Once
+  // it's all done you can keep playing, and COLLECT KEY finishes the level.
   const SCALE = [0, 2, 4, 5, 7, 9, 11, 0]; // C D E F G A B C, as note names (0 = C)
   const LETTER = { 0: 'A', 2: 'S', 4: 'D', 5: 'F', 7: 'G', 9: 'H', 11: 'J' };
+  const C = 0, E = 4, F = 5, G = 7;
   const name = (pc) => Piano.noteName(pc);
-  let ui = {};
+  const W = 900, H = 210, FLOOR = H - 26;
+  const CHORD_WINDOW = 0.09;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  let ui = {}, canvas, ctx;
+
+  // The practice arena: you, your shots and the practice targets.
+  const P = { x: W / 2, dir: 0, face: 1, dash: 0, dashCool: 0, dashDir: 1, shield: 0, trail: [] };
+  let fx = [], rings = [], sparks = [], texts = [], markers = [], laser = null, floaters = [], pickup = null;
+  let pending = null, keys = {}, last = 0, time = 0;
+  let free = false, freeLaserIn = 6, freePickupIn = 9;
+  // Each step can listen for a move: onMove(kind) gets 'single', 'power', 'triad', 'resolve', 'sus4', 'dash'.
+  let onNote = () => {}, onMove = () => {};
+
+  const STEPS = 9;
+  window.__tut = { get P() { return P; }, get free() { return free; }, get laser() { return laser; }, get floaters() { return floaters; }, get pickup() { return pickup; } };
 
   Level.setup({
-    description: 'Your computer keyboard is a piano. Learn to play it, then play the C major scale.',
+    description: 'Your computer keyboard is a piano. Learn to play it, and every move you’ll need in the fights ahead.',
     start(stage) {
       stage.innerHTML = `
         <div class="step" id="step"></div>
         <h1 id="instruction"></h1>
         <p id="hint"></p>
         <div class="dots" id="dots"></div>
-        <p id="feedback"></p>`;
+        <canvas id="arena" width="${W}" height="${H}"></canvas>
+        <p id="feedback"></p>
+        <button id="collect" hidden>COLLECT KEY</button>`;
       ui = {
         step: stage.querySelector('#step'), instruction: stage.querySelector('#instruction'),
         hint: stage.querySelector('#hint'), dots: stage.querySelector('#dots'), feedback: stage.querySelector('#feedback'),
+        collect: stage.querySelector('#collect'),
       };
+      canvas = stage.querySelector('#arena');
+      ctx = canvas.getContext('2d');
+      ui.collect.onclick = () => { ui.collect.blur(); Level.win(); };
+      requestAnimationFrame(loop);
       stepOne();
     },
   });
 
   const piano = Level.piano;
-  let onNote = () => {};
-  piano.onNoteOn((midi) => onNote(midi % 12, midi));
 
+  // ---------- Input ----------
+  piano.onNoteOn((midi) => {
+    onNote(midi % 12, midi);
+    if (!pending) pending = { notes: new Map(), t: CHORD_WINDOW };
+    pending.notes.set(midi % 12, midi);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'Space') {
+      e.preventDefault();
+      keys[e.code] = true;
+      if (e.code === 'Space' && !e.repeat) dash();
+    }
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+  window.addEventListener('blur', () => { keys = {}; });
+
+  function dash() {
+    if (P.dashCool > 0) return;
+    P.dash = 0.18;
+    P.dashCool = 0.9;
+    P.dashDir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) || P.face;
+    Sound.whoosh();
+    onMove('dash');
+  }
+
+  // Notes pressed within a moment of each other count as one chord, as in the fights.
+  function release(notes) {
+    const has = (pc) => notes.has(pc);
+    let kind = 'single';
+    if (has(C) && has(F) && has(G)) kind = 'sus4';
+    else if (has(C) && has(E) && has(G)) kind = 'triad';
+    else if (has(C) && has(G)) kind = 'power';
+    else if (has(C) && has(E) && laser) kind = 'resolve';
+    const shot = (midi, angle, extra = {}) => fx.push({ x: P.x, y: FLOOR - 24, vx: Math.sin(angle) * 520, vy: -Math.cos(angle) * 520, t: 0.9, life: 0.9, midi, ...extra });
+    if (kind === 'power') shot(notes.get(C), 0, { kind, label: 'C+G' });
+    else if (kind === 'triad') [[C, -0.25], [E, 0], [G, 0.25]].forEach(([pc, a]) => shot(notes.get(pc), a, { kind }));
+    else if (kind === 'sus4') sus4();
+    else if (kind === 'resolve') resolve();
+    else notes.forEach((midi) => shot(midi, 0, { kind: 'single' }));
+    onMove(kind);
+  }
+
+  function sus4() {
+    rings.push({ x: P.x, y: FLOOR - 14, r: 12, t: 0.45 });
+    let cleared = 0;
+    for (const f of floaters) if (Math.hypot(f.x - P.x, f.y - FLOOR) < 190) { f.gone = true; cleared++; burst(f.x, f.y, '#8fc4ff', 8); }
+    floaters = floaters.filter((f) => !f.gone);
+    Sound.whoosh();
+    pop(cleared ? `Sus4! Cleared ${cleared}` : 'Sus4!');
+  }
+
+  function resolve() {
+    for (let i = 0; i < 16; i++) burst(laser.x + rand(-6, 6), rand(0, FLOOR), '#C8B8FF', 1);
+    laser.sound.forEach((s) => s.stop());
+    laser = null;
+    Sound.chord([64, 72], 0, 1.2, 0.5); // E + C: the tritone resolves
+    pop('Resolved!');
+  }
+
+  // A harmless violet laser charging above you, to practise resolving.
+  function spawnLaser() {
+    laser = { x: Math.min(W - 80, Math.max(80, P.x + rand(-120, 120))), t: 0, sound: [] }; // silent: it's only practice
+  }
+  function spawnPickup() { pickup = { x: rand(80, W - 80), y: -20 }; }
+
+  function pop(text) { texts.push({ x: P.x, y: FLOOR - 60, text, t: 1.2 }); }
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), v = rand(60, 220);
+      sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.3, 0.6), color });
+    }
+  }
+
+  // ---------- Steps ----------
   function say(text, bad) {
     ui.feedback.textContent = text;
     ui.feedback.className = bad ? 'bad' : '';
   }
-
   function wrong(midi, text) {
     Sound.buzz();
     piano.mark(midi, 'bad');
     say(text, true);
   }
+  function setStep(n, instruction, hint) {
+    ui.step.textContent = `Step ${n} of ${STEPS}`;
+    ui.instruction.textContent = instruction;
+    ui.hint.textContent = hint;
+    ui.dots.innerHTML = '';
+    say('');
+    piano.clearMarks();
+    onNote = () => {};
+    onMove = () => {};
+  }
+  const next = (fn, delay = 900) => { onNote = () => {}; onMove = () => {}; setTimeout(fn, delay); };
+  const markAll = (...pcs) => pcs.forEach((pc) => piano.markPitch(pc));
 
   function stepOne() {
-    ui.step.textContent = 'Step 1 of 3';
-    ui.instruction.textContent = 'Press A to play C';
-    ui.hint.textContent = 'The keys A to K are the white keys. W, E, T, Y and U are the black keys.';
-    piano.clearMarks();
-    piano.markPitch(0);
+    setStep(1, 'Press A to play C', 'The keys A to K are the white keys. W, E, T, Y and U are the black keys.');
+    markAll(C);
     onNote = (pc, midi) => {
-      if (pc !== 0) return wrong(midi, `That’s ${name(pc)}. C is the A key, on the far left.`);
+      if (pc !== C) return wrong(midi, `That’s ${name(pc)}. C is the A key, on the far left.`);
       piano.mark(midi, 'good');
-      say('Nice. That’s C.');
-      onNote = () => {};
-      setTimeout(stepTwo, 900);
+      say('Nice. That’s C, and it fires from your player.');
+      next(stepTwo);
     };
   }
 
   function stepTwo() {
     let index = 0;
-    ui.step.textContent = 'Step 2 of 3';
-    ui.instruction.textContent = 'Play the C major scale';
-    ui.hint.textContent = 'Follow the glowing keys from C up to the next C. It uses only the white keys.';
+    setStep(2, 'Play the C major scale', 'Follow the glowing keys from C up to the next C. It uses only the white keys.');
     ui.dots.innerHTML = SCALE.map(() => '<span class="dot"></span>').join('');
-    say('');
-    const target = () => {
-      piano.clearMarks();
-      piano.markPitch(SCALE[index]);
-    };
+    const target = () => { piano.clearMarks(); piano.markPitch(SCALE[index]); };
     target();
-
     onNote = (pc, midi) => {
       const want = SCALE[index];
-      if (pc !== want) {
-        const letter = index === SCALE.length - 1 ? 'K' : LETTER[want];
-        return wrong(midi, `Not quite. Next is ${name(want)} (the ${letter} key).`);
-      }
+      if (pc !== want) return wrong(midi, `Not quite. Next is ${name(want)} (the ${index === SCALE.length - 1 ? 'K' : LETTER[want]} key).`);
       piano.mark(midi, 'good');
       ui.dots.children[index].classList.add('on');
       say('');
@@ -1344,31 +1453,224 @@ const Level = (() => {
       if (index < SCALE.length) return target();
       piano.clearMarks();
       say('That’s the C major scale.');
-      onNote = () => {};
-      setTimeout(stepThree, 1100);
+      next(stepThree, 1100);
     };
   }
 
   function stepThree() {
-    ui.step.textContent = 'Step 3 of 3';
-    ui.instruction.textContent = 'Play a perfect fifth';
-    ui.hint.textContent = 'Hold A (C), then press G (G) so both notes ring together.';
-    ui.dots.innerHTML = '';
-    say('');
-    piano.clearMarks();
-    piano.markPitch(0);
-    piano.markPitch(7);
-
-    onNote = (pc, midi) => {
-      if (pc !== 0 && pc !== 7) return wrong(midi, `That’s ${name(pc)}. You need C and G.`);
-      const held = new Set(piano.held().map((m) => m % 12));
-      if (!(held.has(0) && held.has(7))) return say(pc === 0 ? 'Keep holding C and add G.' : 'Keep holding G and add C.');
-      piano.mark(midi, 'good');
-      piano.clearMarks();
-      say('That’s a perfect fifth, the sound that holds the circle together.');
-      onNote = () => {};
-      setTimeout(() => Level.win(), 1600);
+    setStep(3, 'Move with ← and →', 'Walk to the glowing marker. In the fights, moving is how you dodge.');
+    markers = [{ x: 160 }, { x: W - 160 }];
+    ui.dots.innerHTML = markers.map(() => '<span class="dot"></span>').join('');
+    let done = 0;
+    const check = () => {
+      if (!markers.length) return;
+      const m = markers[0];
+      if (Math.abs(P.x - m.x) < 34 || (done === 0 && P.x < m.x) || (done === 1 && P.x > m.x)) {
+        markers.shift();
+        ui.dots.children[done].classList.add('on');
+        done++;
+        Sound.note(72 + done * 4, 0, 0.3, 0.25);
+        if (!markers.length) { say('Good. Now the dash.'); next(stepFour, 700); }
+      }
     };
+    stepThree.check = check;
+  }
+
+  function stepFour() {
+    stepThree.check = null;
+    setStep(4, 'Dash with Space', 'A quick burst of speed. You can’t be hit mid-dash, so it’s how you cross a laser.');
+    onMove = (kind) => { if (kind === 'dash') { say('Dashed! It needs a moment to recharge.'); next(stepFive); } };
+  }
+
+  function stepFive() {
+    setStep(5, 'Power shot: hold A + G', 'C and G together, a perfect fifth. Your strongest single shot.');
+    markAll(C, G);
+    onMove = (kind) => { if (kind === 'power') { say('That’s a perfect fifth: the sound that holds the circle together.'); next(stepSix, 1300); } };
+    onNote = (pc, midi) => { if (pc !== C && pc !== G) say(`That’s ${name(pc)}. Press A and G together.`, true); };
+  }
+
+  function stepSix() {
+    setStep(6, 'Triad: hold A + D + G', 'C, E and G together: the C major triad. Three notes, fanned out.');
+    markAll(C, E, G);
+    onMove = (kind) => { if (kind === 'triad') { say('A full triad.'); next(stepSeven); } };
+  }
+
+  function stepSeven() {
+    setStep(7, 'Resolve the laser: A + D', 'Violet lasers are tritones. Play the root and third (C + E) to resolve one before it hits. This one can’t hurt you.');
+    markAll(C, E);
+    spawnLaser();
+    onMove = (kind) => { if (kind === 'resolve') { say('Resolved. Red lasers can’t be resolved: dash through those.'); next(stepEight, 1500); } };
+  }
+
+  function stepEight() {
+    setStep(8, 'Sus4 shockwave: A + F + G', 'C, F and G: a suspended chord. It clears notes around you, then needs to recharge.');
+    markAll(C, F, G);
+    floaters = Array.from({ length: 5 }, (_, i) => ({ x: P.x + (i - 2) * 60, y: FLOOR - 50 - (i % 2) * 30 }));
+    onMove = (kind) => { if (kind === 'sus4') { say('Shockwave! It clears notes, but not lasers.'); next(stepNine, 1300); } };
+  }
+
+  function stepNine() {
+    setStep(9, 'Catch the ear defenders', 'When these fall, walk under them. For a few seconds they block notes that hit you.');
+    spawnPickup();
+    stepNine.active = true;
+  }
+
+  function caught() {
+    P.shield = 5;
+    Sound.note(84, 0, 0.6, 0.25);
+    pop('Ear defenders!');
+    if (stepNine.active) {
+      stepNine.active = false;
+      say('Got them.');
+      next(freePlay, 1000);
+    }
+  }
+
+  // Everything learned: keep playing for as long as you like.
+  function freePlay() {
+    free = true;
+    piano.clearMarks();
+    ui.step.textContent = 'Tutorial complete';
+    ui.instruction.textContent = 'You know every move';
+    ui.hint.textContent = 'A + G power shot · A + D + G triad · A + D resolve · A + F + G sus4 · Space dash. Every shot is loud: play too much in a fight and you’ll clip.';
+    ui.dots.innerHTML = '';
+    say('Practise as long as you like.');
+    ui.collect.hidden = false;
+  }
+
+  // ---------- The arena ----------
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - (last || now)) / 1000);
+    last = now;
+    time += dt;
+    update(dt);
+    draw();
+  }
+
+  function update(dt) {
+    P.dir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
+    if (P.dir) P.face = P.dir;
+    const speed = P.dash > 0 ? 1300 : 380, dir = P.dash > 0 ? P.dashDir : P.dir;
+    P.x = Math.min(W - 24, Math.max(24, P.x + dir * speed * dt));
+    if (P.dash > 0) P.trail.push({ x: P.x, t: 0.25 });
+    P.dash = Math.max(0, P.dash - dt);
+    P.dashCool = Math.max(0, P.dashCool - dt);
+    P.shield = Math.max(0, P.shield - dt);
+    if (stepThree.check) stepThree.check();
+
+    if (pending) {
+      pending.t -= dt;
+      if (pending.t <= 0) { const n = pending.notes; pending = null; release(n); }
+    }
+    if (laser) laser.t += dt;
+    if (pickup) {
+      pickup.y += 90 * dt;
+      if (Math.abs(pickup.x - P.x) < 32 && pickup.y > FLOOR - 40) { pickup = null; caught(); }
+      else if (pickup.y > H + 20) pickup = null;
+    }
+    if (stepNine.active && !pickup) spawnPickup(); // missed it: another one falls
+    if (free) {
+      freeLaserIn -= dt; freePickupIn -= dt;
+      if (freeLaserIn <= 0 && !laser) { spawnLaser(); freeLaserIn = rand(7, 10); }
+      if (freePickupIn <= 0 && !pickup) { spawnPickup(); freePickupIn = rand(10, 14); }
+      if (laser && laser.t > 6) { laser.sound.forEach((s) => s.stop()); laser = null; } // ignored lasers fizzle out
+    }
+
+    fx.forEach((f) => { f.x += f.vx * dt; f.y += f.vy * dt; f.t -= dt; });
+    fx = fx.filter((f) => f.t > 0);
+    rings.forEach((r) => { r.r += 420 * dt; r.t -= dt; });
+    rings = rings.filter((r) => r.t > 0);
+    sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt; });
+    sparks = sparks.filter((s) => s.t > 0);
+    texts.forEach((t) => { t.y -= 30 * dt; t.t -= dt; });
+    texts = texts.filter((t) => t.t > 0);
+    P.trail.forEach((p) => { p.t -= dt; });
+    P.trail = P.trail.filter((p) => p.t > 0);
+  }
+
+  function draw() {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#16141c'); bg.addColorStop(1, '#0f0e13');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(94, 62, 132, 0.35)'; ctx.fillRect(0, FLOOR + 10, W, 2);
+
+    for (const m of markers.slice(0, 1)) {
+      const k = 0.6 + 0.4 * Math.sin(time * 5);
+      ctx.fillStyle = `rgba(200, 184, 255, ${0.25 * k})`;
+      ctx.beginPath(); ctx.ellipse(m.x, FLOOR + 10, 34, 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(200, 184, 255, ${0.8 * k})`; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    if (laser) {
+      const k = Math.min(1, laser.t / 1.2), pulse = 0.7 + 0.3 * Math.sin(time * 12);
+      ctx.strokeStyle = `rgba(200, 184, 255, ${(0.2 + 0.35 * k) * pulse})`;
+      ctx.lineWidth = 6 + 10 * k;
+      ctx.beginPath(); ctx.moveTo(laser.x, 0); ctx.lineTo(laser.x, FLOOR + 10); ctx.stroke();
+      ctx.fillStyle = '#C8B8FF'; ctx.font = '600 12px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('C + F♯  ·  TRITONE', laser.x, 16);
+    }
+
+    for (const f of floaters) {
+      ctx.fillStyle = '#8fc4ff'; ctx.shadowColor = '#8fc4ff'; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(f.x, f.y + Math.sin(time * 3 + f.x) * 4, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    for (const r of rings) {
+      ctx.strokeStyle = `rgba(226, 217, 255, ${r.t / 0.45})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Your shots, fading as they rise
+    for (const f of fx) {
+      ctx.globalAlpha = Math.max(0, f.t / f.life);
+      const power = f.kind === 'power';
+      const color = power ? '#E2D9FF' : f.kind === 'triad' ? '#C8B8FF' : '#9A7FE0';
+      const w = power ? 50 : 26, h = power ? 24 : 18;
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = power ? 22 : 10;
+      roundRect(f.x - w / 2, f.y - h / 2, w, h, 6); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#181818'; ctx.font = `600 ${power ? 12 : 11}px Oswald, sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(f.label || name(f.midi % 12), f.x, f.y + 4);
+    }
+    ctx.globalAlpha = 1;
+
+    if (pickup) drawHeadphones(pickup.x, pickup.y, 0.7, '#E2D9FF', true);
+
+    // You: headphones, with a dash trail and the ear defenders' glow
+    for (const t of P.trail) { ctx.globalAlpha = t.t / 0.25 * 0.4; drawHeadphones(t.x, FLOOR - 4, 1, '#9A7FE0', false); }
+    ctx.globalAlpha = 1;
+    if (P.shield > 0) {
+      ctx.strokeStyle = `rgba(226, 217, 255, ${0.4 + 0.3 * Math.sin(time * 10)})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(P.x, FLOOR - 6, 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    drawHeadphones(P.x, FLOOR - 4, 1, P.shield > 0 ? '#E2D9FF' : '#9A7FE0', P.shield > 0);
+
+    for (const s of sparks) { ctx.globalAlpha = Math.max(0, s.t * 1.8); ctx.fillStyle = s.color; ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
+    for (const t of texts) {
+      ctx.globalAlpha = Math.min(1, t.t * 2);
+      ctx.fillStyle = '#C8B8FF'; ctx.font = '600 16px Oswald, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHeadphones(x, y, scale, color, defenders) {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(scale, scale);
+    ctx.strokeStyle = color; ctx.lineWidth = defenders ? 7 : 5; ctx.lineCap = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0, 0, 18, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    ctx.fillStyle = color;
+    roundRect(-24, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    roundRect(12, -6, 12, defenders ? 22 : 18, 4); ctx.fill();
+    ctx.restore();
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, Math.max(0, h), r) : ctx.rect(x, y, w, Math.max(0, h));
   }
 </script>
 </body>

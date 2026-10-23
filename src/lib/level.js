@@ -26,8 +26,10 @@ const Level = (() => {
     <section class="screen" id="play">
       <div class="focus-banner" id="focusBanner">Click here to keep playing with your keyboard</div>
       <button class="skip" id="skipBtn" hidden>Skip level (test)</button>
-      <div class="sample-status" id="sampleStatus" hidden></div>
-      <button class="reverb-test" id="reverbTest" hidden>Reverb: normal</button>
+      <div class="preview-tools">
+        <div class="sample-status" id="sampleStatus" hidden></div>
+        <button class="reverb-test" id="reverbTest" hidden>Reverb: normal</button>
+      </div>
       <div class="stage" id="stage"></div>
       <div id="piano"></div>
     </section>
