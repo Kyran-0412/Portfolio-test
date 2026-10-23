@@ -126,7 +126,8 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   #feedback.bad { color: #e7a3b0; }
   canvas[hidden] { display: none; }
   canvas { display: block; width: 900px; max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--accent); background: #121116; }
-  .actions { display: flex; gap: 12px; align-items: center; margin-top: 2px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .actions button:not(#collect) { padding: 6px 14px; font-size: 13px; }
   .actions[hidden] { display: none; }
   .tip-wrap { position: relative; display: inline-flex; }
   .tip-wrap.locked::after {
@@ -137,7 +138,7 @@ button.primary { background: var(--mid); border-color: var(--bright); }
   .tip-wrap.locked:hover::after { opacity: 1; }
   .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
   #collect {
-    font: 600 22px var(--heading); letter-spacing: 0.14em; padding: 12px 48px; margin-top: 2px;
+    font: 600 17px var(--heading); letter-spacing: 0.14em; padding: 8px 34px;
     background: var(--mid); border-color: var(--glow); color: #fff;
     box-shadow: 0 0 24px rgba(200, 184, 255, 0.55); animation: collect 1.6s ease-in-out infinite;
   }
@@ -1617,7 +1618,7 @@ const Level = (() => {
   function showFree() {
     mode = 'free';
     pianoEl().hidden = false;
-    setArena(210);
+    setArena(180); // a little shorter than the tutorial's, to fit the buttons above the keyboard
     canvas.hidden = false;
     ui.menu.hidden = true;
     ui.practiceBar.hidden = true;
