@@ -60,6 +60,7 @@
   // at C, wide open and driven by the F core. One row per key.
   //   cutoff (Hz)  drive  detune (cents)  detuneMix  octUp  sub  echo  space (reverb)
   const BOSS = Sound.instrument('circle', { release: 0.5, gain: 1.35, fx: true });
+  const FAN_SYNTH = Sound.instrument('arp', { release: 0.2 }); // its arpeggio fans (shared with the Arpeggiator)
   const EVOLVE = [
     [900,   0,    0,  0,    0,    0,    0,    0.8], // C: dark, tight, dry
     [1100,  0,    0,  0,    0,    0,    0,    0.8], // G
@@ -187,7 +188,7 @@
             <p class="hint" id="endHint" hidden></p>
           </div>
         </div>`;
-      Sound.preload(['circle', 'circle-drone', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
+      Sound.preload(['circle', 'circle-drone', 'arp', 'red-charge', 'red-hit', 'red-beam', 'violet-charge', 'violet-hit', 'violet-beam']);
       Sound.reverb({ mix: 0.32, seconds: 2.2, piano: 1.7, instruments: 1 }); // as in the other fights
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
@@ -371,7 +372,7 @@
     const ph = PHASES[S.phase];
     const ox = S.boss.x, oy = S.boss.y + MUZZLE, speed = ph.speed * NOTE_SPEED * 0.85;
     S.notes.push({ x: ox, y: oy, vx: Math.cos(a.angle) * speed, vy: Math.sin(a.angle) * speed, midi: a.midi, pcs: [a.midi % 12], notes: [a.midi], kind: 'arp', label: ph.labels });
-    Sound.note(a.midi + 12, 0, 0.3, 0.3);
+    FAN_SYNTH.note(a.midi + 12, 0, 0.3, 0.3);
   }
 
   // Lasers: a warning line, then a sweep from one angle to another.

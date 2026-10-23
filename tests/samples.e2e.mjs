@@ -177,6 +177,19 @@ try {
   assert.equal(evo.a, 3, 'at A a detuned pair joins it');
   assert.equal(evo.f, 5, 'at the F core: detuned pair, octave up and sub');
   assert.equal(evo.stage.cutoff, 18000);
+  // Arpeggio fans use the shared arp pluck.
+  const fan = await cf.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    arpNote({ midi: 60, angle: 1.2 });
+    await new Promise((r) => setTimeout(r, 60));
+    a.createBufferSource = orig;
+    return { made: made.length, has: Sound.has('arp'), rate: made[0] && made[0].playbackRate.value };
+  });
+  assert.ok(fan.has && fan.made === 1 && fan.rate === 1, `a fan note plays the arp's C5 as recorded (${JSON.stringify(fan)})`);
+  console.log('✓ the Final Boss’s arpeggio fans use the shared arp');
+
   // The drone: the key's relative minor, from the nearest of the four.
   const drones = await cf.evaluate(() => {
     const a = Sound.unlock(), made = [];
@@ -193,6 +206,27 @@ try {
   assert.ok(drones.loops, 'drones loop');
   console.log('✓ The Circle’s drone plays each key’s relative minor (Am under C, Em under G, Dm under F)');
   console.log('✓ The Circle’s synth evolves: 1 voice at C, 3 at A, 5 by the F core, filter opening up');
+
+  // The Arpeggiator weapon uses the same arp pluck.
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db'] })));
+  await page.goto(`${base}/dev/sim.html?page=level-aflat`);
+  const zg = page.frameLocator('#gameEmbed');
+  await zg.locator('#startBtn').click();
+  const zf = page.frames().find((f) => f.url().includes('level-aflat.html'));
+  await zf.waitForFunction(() => Sound.samples.done && Sound.has('arp'), null, { timeout: 8000 });
+  assert.equal(await zg.locator('#sampleStatus').textContent(), `Samples: ${total + 12} / ${total + 12} loaded`, 'piano + 12 arp notes');
+  await zg.locator('#weapon-arp').click();
+  const shot = await zf.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    window.__zombie.ammo = 12; window.__zombie.reloading = 0; attack();
+    await new Promise((r) => setTimeout(r, 60));
+    a.createBufferSource = orig;
+    return made.length;
+  });
+  assert.equal(shot, 1, 'an Arpeggiator shot plays one arp note');
+  console.log('✓ the Arpeggiator uses the same arp pluck');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');

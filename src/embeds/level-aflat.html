@@ -48,6 +48,7 @@
   const W = 900, H = 540;
   const AB_ARP = [56, 60, 63, 68, 72, 75];           // A♭ major arpeggio, rising
   const AB_PENTA = [68, 70, 72, 75, 77, 80];         // A♭ major pentatonic for kills
+  const ARP = Sound.instrument('arp', { release: 0.15 }); // the Arpeggiator's pluck (shared with the Final Boss's fans)
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -142,6 +143,7 @@
             <div class="buttons" id="endButtons"></div>
           </div>
         </div>`;
+      Sound.preload(['arp']);
       canvas = stage.querySelector('#arena');
       ctx = canvas.getContext('2d');
       ui = {
@@ -272,7 +274,7 @@
         pierce: w.pierce + m.pierce, hits: new Set(), kind: S.weapon, life: S.weapon === 'bass' ? 1.4 : 1.2,
       });
     }
-    if (S.weapon === 'arp') Sound.note(AB_ARP[S.note++ % AB_ARP.length] + 12, 0, 0.18, 0.18);
+    if (S.weapon === 'arp') ARP.note(AB_ARP[S.note++ % AB_ARP.length] + 12, 0, 0.18, 0.18);
     else Sound.chord([44 - 12, 44 - 5], 0, 0.45, 0.45); // a low A♭ fifth
   }
 
