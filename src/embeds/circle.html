@@ -404,6 +404,7 @@
   progress = { held: [], placed: [] };
   render(null);
   progress = null;
+  Sound.warm(); // load the piano now, so the first key inserted already uses it
   Bridge.start();
 </script>
 </body>

@@ -286,6 +286,14 @@ try {
   assert.ok(picks.spread > 0 && picks.maxShift <= 0.5 + 1e-9, `small random pitch nudges (${picks.maxShift.toFixed(2)} semitones max)`);
   console.log('✓ doors: 3 variations at random (never twice running), nudged slightly, loaded before the first click');
 
+  // The circle loads the piano before any click, so inserting a key uses it.
+  await page.unroute(SAMPLE);
+  await page.route(SAMPLE, (r) => r.fulfill({ body: wav, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }));
+  await page.goto(`${base}/dev/sim.html?page=circle-of-fifths`);
+  const circ = page.frames().find((f) => f.url().includes('circle.html'));
+  await circ.waitForFunction(() => Sound.samples.done && Sound.samples.loaded === 17, null, { timeout: 8000 });
+  console.log('✓ the circle loads the piano as the page opens');
+
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All sample checks passed.');
 } finally {
