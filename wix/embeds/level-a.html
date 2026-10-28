@@ -1381,6 +1381,9 @@ const Level = (() => {
     triad: { cost: 24, damage: 3, speed: 600, refund: 8 },    // root + third + fifth: three notes, damage each
   };
   const BOSS_SIZE = 0.72;     // drawing and hitbox scale
+  // Your boss art: a PNG link (400 × 400, transparent background). Leave '' to
+  // use the drawn speaker. size: how wide it's drawn, before BOSS_SIZE.
+  const BOSS_ART = { src: '', size: 170 };
   const BOSS_HEALTH = 1.5;    // damage is divided by this: higher = tougher boss
   const MUZZLE = 44 * BOSS_SIZE; // where notes leave the speaker, below its centre
   const HEARTS = 3;           // hits you can take before losing the fight
@@ -2125,6 +2128,35 @@ const Level = (() => {
     ctx.restore();
   }
 
+  // The art, with a white copy (for hit flashes) made once it loads.
+  const art = { img: null, white: null };
+  function loadArt(src) {
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = '#E2D9FF'; g.fillRect(0, 0, c.width, c.height);
+      art.img = img; art.white = c;
+    };
+    img.src = src;
+  }
+  loadArt(BOSS_ART.src);
+  window.__setBossArt = loadArt; // for automatic tests
+
+  function drawArt(b, glow) {
+    const img = art.img, w = BOSS_ART.size, h = w * (img.naturalHeight / img.naturalWidth);
+    ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 8 + glow * 30; // glows as it gets ready to fire
+    if (b.stun > 0) ctx.globalAlpha = 0.75;
+    ctx.drawImage(img, -w / 2, -h / 2 + 7, w, h);
+    ctx.shadowBlur = 0;
+    if (b.flash > 0) { ctx.globalAlpha = Math.min(1, b.flash / 0.15) * 0.8; ctx.drawImage(art.white, -w / 2, -h / 2 + 7, w, h); }
+    ctx.globalAlpha = 1;
+  }
+
   function drawBoss(b) {
     const glow = S.transition ? 0.6 + 0.4 * Math.sin(S.time * 14) : b.warn;
     const wobble = b.stun > 0 ? Math.sin(S.time * 30) * 3 : 0;
@@ -2132,6 +2164,12 @@ const Level = (() => {
     ctx.translate(b.x + wobble, b.y);
     ctx.scale(BOSS_SIZE, BOSS_SIZE);
     const x = 0, y = 0;
+    if (art.img) {
+      drawArt(b, glow);
+      if (b.stun > 0) { ctx.fillStyle = '#E2D9FF'; ctx.font = '600 13px Oswald, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('STUNNED', 0, -BOSS_ART.size / 2 - 6); }
+      ctx.restore();
+      return;
+    }
     // Mic leaning into the speaker: the cause of the feedback
     ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(x + 96, y + 52); ctx.lineTo(x + 82, y + 2); ctx.stroke();
