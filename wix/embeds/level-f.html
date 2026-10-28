@@ -901,9 +901,39 @@ const Sound = (() => {
       chord([root, root + 7], 0, 0.9, 0.5);
       chord([root, root + 4, root + 7, root + 12], 0.55, 2.4, 0.55);
     },
-    // Clicking a lit key once the circle is complete.
+    // Clicking a lit key on the circle.
     fifth(root) {
       chord([root, root + 7], 0, 1.1, 0.45);
+    },
+    // Clicking a minor key on the finished circle: its minor triad.
+    minor(root) {
+      chord([root, root + 3, root + 7], 0, 1.3, 0.45);
+    },
+    // A low rumble that builds over `rise` seconds; returns stop(fade).
+    rumble(rise = 4) {
+      const a = audio(), t = a.currentTime + 0.02;
+      const len = a.sampleRate * 2, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; } // brown noise
+      const src = a.createBufferSource(), lp = a.createBiquadFilter(), g = a.createGain();
+      src.buffer = buf; src.loop = true;
+      lp.type = 'lowpass'; lp.frequency.setValueAtTime(70, t); lp.frequency.linearRampToValueAtTime(160, t + rise);
+      const sub = a.createOscillator(), sg = a.createGain();
+      sub.frequency.value = 41; sg.gain.value = 0.25;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + rise);
+      src.connect(lp).connect(g); sub.connect(sg).connect(g); g.connect(out);
+      src.start(t); sub.start(t);
+      let stopped = false;
+      return {
+        stop(fade = 1.5) {
+          if (stopped) return;
+          stopped = true;
+          const now = a.currentTime;
+          g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(Math.max(g.gain.value, 0.0001), now);
+          g.gain.setTargetAtTime(0.0001, now, fade / 4);
+          src.stop(now + fade + 0.2); sub.stop(now + fade + 0.2);
+        },
+      };
     },
     // Finding a key at the end of a level: a rising arpeggio.
     keyFound(root) {
@@ -1401,7 +1431,7 @@ const Level = (() => {
     [330, 0.6,  1.35, 0.3,  0.2,  0, 0.3,  135, 9,   1.9,  0.35, 0,   6.5, 6.5, 'Arpeggio fans'],
     [340, 0.58, 1.3,  0.3,  0.25, 0, 0.35, 140, 8.5, 1.9,  0.3,  0.4, 7,   6,   'Red lasers: these can’t be resolved'],
     [355, 0.56, 1.2,  0.35, 0.25, 0, 0.4,  150, 8,   1.85, 0.3,  0.55, 6.5, 5.5, 'Faster'],
-    [370, 0.54, 1.1,  0.35, 0.25, 0, 0.45, 160, 7.5, 1.8,  0.3,  0.7, 6,   5,   'Only F is left'],
+    [400, 0.5,  0.95, 0.35, 0.25, 0, 0.5,  175, 6.5, 1.7,  0.3,  0.7, 5,   4.3, 'Only F is left'], // the core: faster still
   ];
   const PHASES = STAGE_TABLE.map(([speed, warn, gap, fifths, triads, labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name]) =>
     ({ speed, warn, gap, fifths, triads, labels: !!labels, lead, drift, laserGap, sweep, reverse, red, ground, arp, name }));
@@ -1430,7 +1460,7 @@ const Level = (() => {
   const TRACK = { on: true, follow: 2.2, maxSpeed: 220, miss: 35 };
   const AIMED = ['note', 'fifth', 'triad']; // fans and bombs keep their fixed marks
   const NOTE_SPEED = 1.25;
-  const BOSS_SIZE = 0.72, BOSS_HEALTH = 2.1;
+  const BOSS_SIZE = 0.72, BOSS_HEALTH = 3.2; // the toughest boss: about 50% more health than before
   const MUZZLE = 40 * BOSS_SIZE;
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (list) => list[Math.floor(Math.random() * list.length)];

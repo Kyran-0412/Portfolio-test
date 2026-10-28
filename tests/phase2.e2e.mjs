@@ -129,9 +129,26 @@ try {
   await circle.locator('g.node.ready[data-key="F"]').waitFor();
   await page.waitForTimeout(1800);
   await page.locator('#circle').screenshot({ path: `${shots}/p2-circle-11.png` });
+  // Placed keys play straight away, before the circle is complete.
+  await circle.locator('g.node[data-key="D"]').click();
+  await circle.locator('g.node.ping[data-key="D"]').waitFor();
+  // The finale (run fast here): cursor hidden and shaking during it, majors then minors, home to C.
+  const cf = page.frames().find((f) => f.url().includes('circle.html'));
+  await cf.evaluate(() => { window.__circle.pace = 0.08; });
   await circle.locator('g.node[data-key="F"]').click();
+  await cf.waitForFunction(() => document.querySelector('.wrap.shaking') !== null, null, { timeout: 4000 });
+  assert.ok(await cf.evaluate(() => document.documentElement.classList.contains('finale')), 'cursor hidden during the finale');
+  await page.locator('#circle').screenshot({ path: `${shots}/p2-finale.png` });
+  await circle.locator('#victory.show').waitFor({ timeout: 8000 });
+  assert.equal(await cf.evaluate(() => document.documentElement.classList.contains('finale')), false, 'cursor back');
+  assert.equal(await circle.locator('g.minor.awake').count(), 12, 'every minor lit');
+  await page.locator('#circle').screenshot({ path: `${shots}/p2-victory.png` });
+  await circle.locator('#victoryClose').click();
   await circle.locator('svg.complete').waitFor({ timeout: 5000 });
   await circle.locator('.message.show', { hasText: 'The circle is complete.' }).waitFor();
+  await circle.locator('g.minor[data-minor="Bb"]').click();
+  await circle.locator('g.minor.ping[data-minor="Bb"]').waitFor();
+  console.log('✓ finale: majors C→F, minors Dm→Am, resolve to C; victory popup; minors playable');
   await page.frameLocator('#doorF').locator('.door.done').waitFor();
   await page.waitForTimeout(1600);
   await page.locator('#circle').screenshot({ path: `${shots}/p2-circle-complete.png` });

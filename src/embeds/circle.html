@@ -60,6 +60,33 @@
   .minor.awake .disc { fill: var(--moon); stroke: #fff; }
   .minor.awake .name { fill: var(--bg); opacity: 1; }
 
+  .complete .minor.awake { cursor: pointer; }
+  .minor .body { transform-box: fill-box; transform-origin: center; }
+  .minor.ping .body { animation: ping 0.5s ease-out; }
+
+  /* The finale: no cursor, the circle shakes, each key flares as it plays. */
+  html.finale, html.finale * { cursor: none !important; }
+  .wrap.shaking { animation: shake 0.09s linear infinite; }
+  @keyframes shake {
+    0% { transform: translate(0, 0); } 25% { transform: translate(calc(var(--shake, 0px) * -1), calc(var(--shake, 0px) * 0.6)); }
+    50% { transform: translate(var(--shake, 0px), calc(var(--shake, 0px) * -0.4)); } 75% { transform: translate(calc(var(--shake, 0px) * -0.5), var(--shake, 0px)); }
+  }
+  .node.flare .body, .minor.flare .body { animation: flare 0.7s ease-out; }
+  .node.flare .halo { animation: bloom 1.2s ease-out both; }
+  @keyframes flare { 0% { transform: scale(1); } 30% { transform: scale(1.28); } 100% { transform: scale(1); } }
+  .burst { fill: none; stroke: var(--glow); pointer-events: none; }
+  .victory {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.85); z-index: 3;
+    width: min(420px, 86%); padding: 22px 24px; text-align: center; border-radius: 14px;
+    background: rgba(24, 22, 30, 0.95); border: 1px solid var(--glow); box-shadow: 0 0 40px rgba(200, 184, 255, 0.45);
+    opacity: 0; pointer-events: none; transition: opacity 0.6s, transform 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  .victory.show { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+  .victory .eyebrow { font: 500 13px var(--heading); letter-spacing: 0.2em; text-transform: uppercase; color: var(--bright); }
+  .victory h2 { margin: 6px 0 8px; font: 600 34px var(--heading); letter-spacing: 0.02em; }
+  .victory p { margin: 0 0 14px; color: var(--quiet); font-size: 14px; line-height: 1.5; }
+  .victory button { background: var(--mid); border-color: var(--bright); }
+
   .count { font: 600 34px var(--heading); fill: var(--text); text-anchor: middle; opacity: 0; transition: opacity 0.8s; }
   .count-label { font: 500 12px var(--heading); letter-spacing: 0.2em; fill: var(--quiet); text-anchor: middle; opacity: 0; transition: opacity 0.8s; }
   .has-progress .count, .has-progress .count-label { opacity: 1; }
@@ -114,6 +141,12 @@
     <text class="count-label" x="320" y="348">KEYS PLACED</text>
   </svg>
   <div class="tip" id="tip"></div>
+  <div class="victory" id="victory" role="dialog" aria-label="You beat the game">
+    <div class="eyebrow">Full circle</div>
+    <h2>You beat the game</h2>
+    <p>Twelve keys found, and the circle has come home to C. Click any key, major or minor, to play it.</p>
+    <button id="victoryClose">Play the circle</button>
+  </div>
 </div>
 <p class="message" id="message" aria-live="polite"></p>
 <button class="reset" id="reset" hidden>Reset game progress</button>
@@ -154,10 +187,13 @@
     el('line', { class: 'spoke', x1, y1, x2, y2 }, $('spokes'));
 
     const [mx, my] = point(i, INNER);
-    const minor = el('g', { class: 'minor', transform: `translate(${mx} ${my})` }, $('minors'));
-    el('circle', { class: 'disc', r: 25 }, minor);
-    el('text', { class: 'name', y: 5.5 }, minor).textContent = info.minor;
+    const minor = el('g', { class: 'minor', transform: `translate(${mx} ${my})`, 'data-minor': key }, $('minors'));
+    const mbody = el('g', { class: 'body' }, minor);
+    el('circle', { class: 'disc', r: 25 }, mbody);
+    el('text', { class: 'name', y: 5.5 }, mbody).textContent = info.minor;
     minors[key] = minor;
+    // Once the game is beaten, the minor keys play too.
+    minor.addEventListener('click', () => playMinor(key));
 
     const [x, y] = point(i, OUTER);
     const node = el('g', { class: 'node', transform: `translate(${x} ${y})`, 'data-key': key }, $('majors'));
@@ -183,7 +219,10 @@
   // ---------- State ----------
   let progress = null;
   let placing = false;
+  let inFinale = false;
   const isComplete = () => progress && progress.placed.length === KEYS.length;
+  // For automatic tests: pace < 1 runs the finale faster.
+  window.__circle = { pace: 1, get inFinale() { return inFinale; } };
 
   function render(justPlaced) {
     const placed = progress.placed;
@@ -197,7 +236,7 @@
       node.classList.toggle('lit', lit);
       node.classList.toggle('ready', ready);
       node.classList.toggle('inserting', key === justPlaced);
-      const playable = ready || (isComplete() && lit);
+      const playable = ready || lit; // placed keys play as soon as they're in
       node.setAttribute('tabindex', playable ? '0' : '-1');
       node.setAttribute('role', playable ? 'button' : 'img');
       node.setAttribute('aria-label', `${KEY_INFO[key].label} major${lit ? ', lit' : ''}${ready ? ', place your key here' : ''}`);
@@ -215,9 +254,11 @@
 
     if (isComplete() && !justPlaced) {
       $('circle').classList.add('complete');
+      KEYS.forEach((k) => minors[k].classList.add('awake'));
       say('The circle is complete.');
     } else if (!isComplete()) {
       $('circle').classList.remove('complete');
+      KEYS.forEach((k) => minors[k].classList.remove('awake'));
     }
   }
 
@@ -241,26 +282,86 @@
     } else {
       say('');
     }
-    if (isComplete()) {
-      setTimeout(() => {
-        Sound.chord([53, 57, 60], 0, 0.9, 0.5);      // F major
-        Sound.chord([55, 59, 62], 0.8, 0.9, 0.5);    // G major
-        Sound.chord([48, 60, 64, 67, 72], 1.6, 3, 0.6); // home to C
-        $('circle').classList.add('complete');
-        say('The circle is complete.');
-      }, 2200);
-    }
+    if (isComplete()) finale();
   });
 
+  // ---------- The finale ----------
+  // The last key goes in. The cursor hides, a rumble builds and the circle
+  // shakes; every major key plays round from C to F, then the minors play
+  // back the other way from Dm to Am, and it all resolves on C major.
+  const wait = (s) => new Promise((r) => setTimeout(r, s * 1000 * window.__circle.pace));
+  function flare(node) {
+    node.classList.remove('flare', 'ping');
+    void node.getBBox();
+    node.classList.add('flare');
+  }
+  async function finale() {
+    inFinale = true;
+    hideTip();
+    document.documentElement.classList.add('finale');
+    say('');
+    await wait(2);
+    const rumble = Sound.rumble(6);
+    const wrap = $('wrap');
+    wrap.classList.add('shaking');
+    let shake = 0.6;
+    const grow = setInterval(() => { shake = Math.min(4, shake + 0.12); wrap.style.setProperty('--shake', `${shake}px`); }, 250 * window.__circle.pace);
+    await wait(1);
+    for (const key of KEYS) {                   // C, G, D … F
+      flare(nodes[key]);
+      Sound.fifth(rootMidi(key));
+      await wait(0.5);
+    }
+    await wait(0.6);
+    const back = [...KEYS].reverse();           // Dm, Gm, Cm … Am
+    for (const [i, key] of back.entries()) {
+      minors[key].classList.add('awake');
+      flare(minors[key]);
+      Sound.minor(rootMidi(key) - 3);
+      await wait(i === 0 ? 2.4 : 0.6);          // a long breath after Dm
+    }
+    await wait(0.5);
+    // Home: C major.
+    clearInterval(grow);
+    wrap.classList.remove('shaking');
+    rumble.stop(1.2);
+    Sound.chord([36, 48, 55, 60, 64, 67, 72], 0, 4, 0.7);
+    [0, 4, 7, 12, 16, 19, 24].forEach((st, i) => Sound.note(72 + st, 0.35 + i * 0.09, 1.6, 0.25));
+    victoryBurst();
+    $('circle').classList.add('complete');
+    document.documentElement.classList.remove('finale');
+    inFinale = false;
+    await wait(1.2);
+    $('victory').classList.add('show');
+    say('The circle is complete.');
+  }
+  // Rings of light pulsing out from the centre.
+  function victoryBurst() {
+    for (let i = 0; i < 4; i++) {
+      const ring = el('circle', { class: 'burst', cx: CENTER, cy: CENTER, r: 20, 'stroke-width': 6 }, $('circle'));
+      ring.animate([{ r: 20, opacity: 0.9, strokeWidth: 8 }, { r: 330, opacity: 0, strokeWidth: 1 }],
+        { duration: 1600, delay: i * 260, easing: 'ease-out', fill: 'forwards' }).onfinish = () => ring.remove();
+    }
+    KEYS.forEach((k) => { flare(nodes[k]); flare(minors[k]); });
+  }
+  $('victoryClose').onclick = () => $('victory').classList.remove('show');
+
+  function playMinor(key) {
+    if (!isComplete() || inFinale) return;
+    Sound.unlock();
+    Sound.minor(rootMidi(key) - 3);
+    minors[key].classList.remove('ping'); void minors[key].getBBox(); minors[key].classList.add('ping');
+  }
+
   function activate(key) {
-    if (!progress) return;
+    if (!progress || inFinale) return;
     const node = nodes[key];
     Sound.unlock();
     if (node.classList.contains('ready') && !placing) {
       placing = true;
       hideTip();
       Bridge.send({ type: 'placeKey', key });
-    } else if (isComplete()) {
+    } else if (node.classList.contains('lit')) { // any placed key plays its fifth
       Sound.fifth(rootMidi(key));
       node.classList.remove('ping');
       void node.getBBox();

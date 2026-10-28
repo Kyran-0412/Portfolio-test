@@ -901,9 +901,39 @@ const Sound = (() => {
       chord([root, root + 7], 0, 0.9, 0.5);
       chord([root, root + 4, root + 7, root + 12], 0.55, 2.4, 0.55);
     },
-    // Clicking a lit key once the circle is complete.
+    // Clicking a lit key on the circle.
     fifth(root) {
       chord([root, root + 7], 0, 1.1, 0.45);
+    },
+    // Clicking a minor key on the finished circle: its minor triad.
+    minor(root) {
+      chord([root, root + 3, root + 7], 0, 1.3, 0.45);
+    },
+    // A low rumble that builds over `rise` seconds; returns stop(fade).
+    rumble(rise = 4) {
+      const a = audio(), t = a.currentTime + 0.02;
+      const len = a.sampleRate * 2, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; } // brown noise
+      const src = a.createBufferSource(), lp = a.createBiquadFilter(), g = a.createGain();
+      src.buffer = buf; src.loop = true;
+      lp.type = 'lowpass'; lp.frequency.setValueAtTime(70, t); lp.frequency.linearRampToValueAtTime(160, t + rise);
+      const sub = a.createOscillator(), sg = a.createGain();
+      sub.frequency.value = 41; sg.gain.value = 0.25;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + rise);
+      src.connect(lp).connect(g); sub.connect(sg).connect(g); g.connect(out);
+      src.start(t); sub.start(t);
+      let stopped = false;
+      return {
+        stop(fade = 1.5) {
+          if (stopped) return;
+          stopped = true;
+          const now = a.currentTime;
+          g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(Math.max(g.gain.value, 0.0001), now);
+          g.gain.setTargetAtTime(0.0001, now, fade / 4);
+          src.stop(now + fade + 0.2); sub.stop(now + fade + 0.2);
+        },
+      };
     },
     // Finding a key at the end of a level: a rising arpeggio.
     keyFound(root) {
