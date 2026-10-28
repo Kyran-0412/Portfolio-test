@@ -305,13 +305,9 @@ const Sound = (() => {
   });
   // Your own sound effects. A list is a set of variations: one plays at random
   // (never the same twice running), with a slight random pitch and volume nudge.
-  Object.assign(SOUNDS, {
-    'door-locked': [
-      'https://static.wixstatic.com/mp3/281301_55e2ec682089429b8853bad98d460980.wav',
-      'https://static.wixstatic.com/mp3/281301_8ac1616de2b5484ab87c7e3fac5da419.wav',
-      'https://static.wixstatic.com/mp3/281301_744973ede9df491aa56ef58aedeb978c.wav',
-    ],
-  });
+  // (The locked-door knock uses the built-in sound for now. To bring your three
+  // recordings back, add: SOUNDS['door-locked'] = ['…55e2ec682089429b8853bad98d460980.wav',
+  // '…8ac1616de2b5484ab87c7e3fac5da419.wav', '…744973ede9df491aa56ef58aedeb978c.wav'] with the full links.)
   const SFX_GAIN = 0.42; // one-shot effects like the bombs: punchy, under the lasers
   SOUNDS['circle-drone'] = { // minor drones, shifted from the nearest one into each key's relative minor
     48: 'https://static.wixstatic.com/mp3/281301_c61812d86634410482b8fae1a6cc3e05.wav', // C minor
