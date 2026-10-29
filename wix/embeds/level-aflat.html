@@ -392,7 +392,7 @@ const Sound = (() => {
       wanted.forEach(loadNamed);
       if (!pending) finishLoad();
     }
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {}); // before a click it just stays quiet
+    if (ctx.state === 'suspended') { const r = ctx.resume(); if (r && r.catch) r.catch(() => {}); } // before a click it just stays quiet
     return ctx;
   }
 
@@ -811,7 +811,8 @@ const Sound = (() => {
     // For pages with no piano: call before any sound plays.
     noPiano() { pianoWanted = false; status.total -= Object.keys(SAMPLES).length; },
     // Starts loading straight away, before the first click (it stays silent until then).
-    warm() { audio(); },
+    // Never throws: if the browser won't make audio yet, it just tries again on the first click.
+    warm() { try { audio(); } catch (err) { ctx = null; } },
     reverb(options) { reverbWanted = options || {}; if (ctx && !reverbIn) buildReverb(reverbWanted); },
     get hasReverb() { return !!reverbIn; },
     // Preview only: 'normal', 'wet' (just the reverb, loud enough to judge) or 'off'.
@@ -1330,8 +1331,8 @@ const Level = (() => {
       $('piano').hidden = !showPiano;
       // Start loading sounds now, on the intro screen, so they're ready by the
       // first note. (Files already fetched by another page come from the cache.)
-      Sound.warm();
       Bridge.start();
+      try { Sound.warm(); } catch (err) { /* sounds load on Start instead */ }
     },
     // Reveals the piano partway through a level that started without it.
     showPiano() {

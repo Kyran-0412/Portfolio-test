@@ -170,8 +170,8 @@ const Level = (() => {
       $('piano').hidden = !showPiano;
       // Start loading sounds now, on the intro screen, so they're ready by the
       // first note. (Files already fetched by another page come from the cache.)
-      Sound.warm();
       Bridge.start();
+      try { Sound.warm(); } catch (err) { /* sounds load on Start instead */ }
     },
     // Reveals the piano partway through a level that started without it.
     showPiano() {

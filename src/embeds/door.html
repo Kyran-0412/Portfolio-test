@@ -167,11 +167,10 @@
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tryDoor(); }
   });
 
-  // Load the door's own sounds now, so the first click already uses them.
-  Sound.noPiano();
-  Sound.preload(['door-locked']);
-  Sound.warm();
-  Bridge.start();
+  Bridge.start(); // first: the page tells the door whether it's open
+  // Then get the door's sounds ready, so the first click is instant. Sound
+  // problems can never stop the door working.
+  try { Sound.noPiano(); Sound.preload(['door-locked']); Sound.warm(); } catch (err) { /* sound stays off until a click */ }
 </script>
 </body>
 </html>

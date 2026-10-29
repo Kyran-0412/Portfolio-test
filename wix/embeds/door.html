@@ -401,7 +401,7 @@ const Sound = (() => {
       wanted.forEach(loadNamed);
       if (!pending) finishLoad();
     }
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {}); // before a click it just stays quiet
+    if (ctx.state === 'suspended') { const r = ctx.resume(); if (r && r.catch) r.catch(() => {}); } // before a click it just stays quiet
     return ctx;
   }
 
@@ -820,7 +820,8 @@ const Sound = (() => {
     // For pages with no piano: call before any sound plays.
     noPiano() { pianoWanted = false; status.total -= Object.keys(SAMPLES).length; },
     // Starts loading straight away, before the first click (it stays silent until then).
-    warm() { audio(); },
+    // Never throws: if the browser won't make audio yet, it just tries again on the first click.
+    warm() { try { audio(); } catch (err) { ctx = null; } },
     reverb(options) { reverbWanted = options || {}; if (ctx && !reverbIn) buildReverb(reverbWanted); },
     get hasReverb() { return !!reverbIn; },
     // Preview only: 'normal', 'wet' (just the reverb, loud enough to judge) or 'off'.
@@ -1001,11 +1002,10 @@ const Sound = (() => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tryDoor(); }
   });
 
-  // Load the door's own sounds now, so the first click already uses them.
-  Sound.noPiano();
-  Sound.preload(['door-locked']);
-  Sound.warm();
-  Bridge.start();
+  Bridge.start(); // first: the page tells the door whether it's open
+  // Then get the door's sounds ready, so the first click is instant. Sound
+  // problems can never stop the door working.
+  try { Sound.noPiano(); Sound.preload(['door-locked']); Sound.warm(); } catch (err) { /* sound stays off until a click */ }
 </script>
 </body>
 </html>
