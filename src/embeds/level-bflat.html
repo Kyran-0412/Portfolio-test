@@ -596,5 +596,13 @@
     },
   });
 </script>
+<script>
+  // If this shows, the file was pasted from src/embeds (whose shared code isn't
+  // built in). The built files in wix/embeds never show it.
+  if (typeof Bridge === 'undefined') {
+    document.body.innerHTML = '<div style="font:16px/1.5 system-ui,sans-serif;color:#ffb3c0;background:#2a1418;border:1px solid #c46a7a;border-radius:10px;padding:16px 18px;margin:16px">'
+      + '<b>Wrong file.</b> This box has the working copy from <code>src/embeds</code>. Paste the file with the same name from <b><code>wix/embeds</code></b> instead.</div>';
+  }
+</script>
 </body>
 </html>
