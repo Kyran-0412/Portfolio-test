@@ -770,17 +770,34 @@ const Sound = (() => {
 
   // A backing track: loops the whole file. Returns null if its file isn't
   // loaded, so a fight with no music yet just carries on.
+  // Backing tracks wait for their file: if it's still loading when the fight
+  // starts, the track begins (fading in) the moment it arrives. stop() works
+  // either way. Returns null only for a sound that doesn't exist at all.
+  function waitThen(ready, begin) {
+    let inner = null, stopped = false, timer = null;
+    const attempt = () => {
+      if (stopped) return;
+      if (ready()) { inner = begin(); return; }
+      if (status.done && !pending) { const r = ready(true); if (r) inner = begin(); return; } // gave up loading: start with what there is
+      timer = setTimeout(attempt, 150);
+    };
+    attempt();
+    return { stop(fade) { stopped = true; clearTimeout(timer); if (inner) inner.stop(fade); }, get playing() { return !!inner && !stopped; } };
+  }
   function track(name, opts = {}) {
-    const buf = named[name];
-    if (!buf || !buf.getChannelData) return null;
-    return playTrack(buf, opts);
+    if (!SOUNDS[name]) return null;
+    return waitThen(() => named[name] && named[name].getChannelData, () => playTrack(named[name], opts));
   }
   // A backing track from a pitched set, shifted from the nearest one to `midi`.
+  // It waits for the whole set, so it starts on the nearest recording.
   function trackNear(name, midi, opts = {}) {
-    const set = named[name];
-    if (!set || set.getChannelData || !Object.keys(set).length) return null;
-    const n = nearestIn(set, midi);
-    return playTrack(n.buf, { ...opts, rate: n.rate });
+    if (!SOUNDS[name]) return null;
+    const want = Object.keys(SOUNDS[name]).length;
+    const have = () => (named[name] && !named[name].getChannelData ? Object.keys(named[name]).length : 0);
+    return waitThen((giveUp) => (giveUp ? have() > 0 : have() === want), () => {
+      const n = nearestIn(named[name], midi);
+      return playTrack(n.buf, { ...opts, rate: n.rate });
+    });
   }
   function playTrack(buf, { volume = MUSIC_GAIN, fadeIn = 0, rate = 1 } = {}) {
     const a = audio(), t = a.currentTime + 0.05;

@@ -122,17 +122,26 @@ try {
 
   // Feedback's boss synth: only its fight loads it; holds outlast the 5 s note.
   await page.unroute(SAMPLE);
-  await page.route(SAMPLE, (r) => r.fulfill({ body: long, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }));
+  // (Feedback's drone arrives late on purpose, to check the fight picks it up.)
+  await page.route(SAMPLE, async (r) => {
+    if (r.request().url().includes('c7a3733e0fac45d0be421666778cb5a2')) await new Promise((res) => setTimeout(res, 2500));
+    r.fulfill({ body: long, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }).catch(() => {});
+  });
   await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D'] })));
   await page.goto(`${base}/dev/sim.html?page=level-a`);
   const fb = page.frameLocator('#gameEmbed');
   await fb.locator('#startBtn').click();
   const ff = page.frames().find((f) => f.url().includes('level-a.html'));
-  await ff.waitForFunction(() => Sound.samples.done && Sound.has('feedback'), null, { timeout: 8000 });
+  await ff.waitForFunction(() => Sound.has('feedback'), null, { timeout: 8000 });
+  // Start the fight before the drone has loaded: it should start by itself once it arrives.
+  assert.equal(await ff.evaluate(() => Sound.has('feedback-drone')), false, 'drone still loading');
+  await fb.locator('#fightBtn').click();
+  assert.equal(await ff.evaluate(() => window.__drone().playing), false, 'not yet');
+  await ff.waitForFunction(() => window.__drone() && window.__drone().playing, null, { timeout: 6000 });
+  console.log('✓ a fight started before its drone loaded picks the drone up when it arrives');
+  await ff.waitForFunction(() => Sound.samples.done, null, { timeout: 8000 });
   assert.equal(await fb.locator('#sampleStatus').textContent(), `Samples: ${total + 8} / ${total + 8} loaded`, 'piano + 7 Feedback notes + its drone, no lasers');
   await ff.waitForFunction(() => Sound.has('feedback-drone'));
-  await fb.locator('#fightBtn').click();
-  await ff.waitForFunction(() => window.__drone() !== null, null, { timeout: 3000 });
   assert.equal(await ff.evaluate(() => Sound.hasReverb), true, 'Feedback has reverb');
   await fb.locator('#reverbTest', { hasText: 'Reverb: normal' }).click();
   assert.equal(await fb.locator('#reverbTest').textContent(), 'Reverb: 100% wet');
