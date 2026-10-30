@@ -4,6 +4,7 @@ import { start } from './helpers/browser.mjs';
 
 const shots = process.env.SHOTS || '/tmp';
 const { base, page, errors, close } = await start();
+const saved = async () => JSON.parse(await page.evaluate(() => localStorage.getItem('cof-progress')));
 
 async function open(weapon) {
   await page.goto(`${base}/dev/sim.html?page=level-aflat`);
@@ -108,6 +109,28 @@ try {
   await game.locator('#found.show').waitFor({ timeout: 5000 });
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of A♭.');
   console.log('✓ surviving wave 5 gives the key of A♭');
+
+  // The hidden heart: a cracked speaker that bursts after enough hits.
+  ({ game, frame, S, at } = await open('arp'));
+  await calm(S);
+  await S(() => { const s = window.__zombie; s.crack.index = 0; s.player.x = 120; s.player.y = 200; s.ammo = 12; s.reloading = 0; });
+  await page.mouse.move(...at(60, 92)); // aim at the top-left stack
+  await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up();
+  const cracked = await S(() => window.__zombie.crack.hits);
+  assert.ok(cracked >= 2, `shots crack the speaker (${cracked} hits)`);
+  await S(() => { while (!window.__zombie.crack.open) hitCrack(); });
+  const heart = await S(() => window.__zombie.crack.heart);
+  assert.ok(heart, 'it bursts open and drops a heart');
+  await page.locator('#gameEmbed').screenshot({ path: `${shots}/lz-heart.png` });
+  await S((h) => { window.__zombie.player.x = h.x; window.__zombie.player.y = h.y; }, heart);
+  await frame.waitForFunction(() => window.__zombie.crack.found, null, { timeout: 2000 });
+  await S(() => startWave(4));
+  await S(() => { window.__zombie.crack.found = true; }); // a new wave keeps it
+  await clearWave(S);
+  await game.locator('#found.show').waitFor({ timeout: 6000 });
+  await game.locator('#heartFound').waitFor({ state: 'visible', timeout: 4000 });
+  assert.ok((await saved()).hearts.includes('Ab'), 'the hidden heart is saved');
+  console.log('✓ hidden heart: a cracked speaker cracks under fire, bursts after 8 hits, and its heart is saved');
 
   // Mic Swing: melee hits in front, not behind.
   ({ game, frame, S, at } = await open('mic'));

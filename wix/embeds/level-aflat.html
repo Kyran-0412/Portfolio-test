@@ -1459,6 +1459,9 @@ const Level = (() => {
     push: 26,         // and get pushed back this far
   };
   const RING_END = Math.hypot(W, H) + 40;
+  // The hidden heart: one speaker stack (a different one each visit) has a
+  // faint crack. Hit it this many times and it bursts, dropping a heart.
+  const CRACK_HITS = 8;
 
   // Upgrades offered between waves (three at random). Some only suit one weapon.
   const UPGRADES = [
@@ -1550,6 +1553,7 @@ const Level = (() => {
       zombies: [], shots: [], spits: [], sparks: [], texts: [], swings: [],
       queue: [], spawnIn: 0, fireCool: 0, note: 0, shake: 0, hurtFlash: 0, banner: null, spawnerGlow: [0, 0, 0, 0],
       waveStart: null, // upgrades and health at the start of the wave, for retries
+      crack: { index: Math.floor(Math.random() * 4), hits: 0, open: false, heart: null, found: false },
       fb: { state: 'idle', cool: FEEDBACK.readyAtStart ? 0 : FEEDBACK.cooldown, charge: 0, t: 0, rings: [], flash: 0 },
     };
     window.__zombie = S; // for automatic tests
@@ -1624,6 +1628,11 @@ const Level = (() => {
           hit = true;
         }
       }
+      // The cracked speaker can be hit too.
+      const [cx, cy] = SPAWNERS[S.crack.index];
+      let diff = Math.atan2(cy - p.y, cx - p.x) - a;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      if (Math.hypot(cx - p.x, cy - p.y) < reach + 30 && Math.abs(diff) < w.arc / 2) { hitCrack(); hit = true; }
       Sound.whoosh();
       if (hit) Sound.hit();
       return;
@@ -1739,6 +1748,21 @@ const Level = (() => {
   const fbLevel = () => (S.fb.state === 'charging' ? S.fb.charge / FEEDBACK.charge : ['full', 'windup'].includes(S.fb.state) ? 1 : 0);
   const formatTime = (sec) => { const t = Math.ceil(sec); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 
+  function hitCrack() {
+    const c = S.crack;
+    if (c.open) return;
+    c.hits++;
+    const [x, y] = SPAWNERS[c.index];
+    for (let i = 0; i < 5; i++) spark(x + rand(-20, 20), y + rand(-24, 24), '#9A93A3');
+    if (c.hits < CRACK_HITS) return;
+    // It bursts open, and a heart drops out towards the middle.
+    c.open = true;
+    for (let i = 0; i < 30; i++) spark(x, y, i % 2 ? '#ff8fa6' : '#E2D9FF');
+    c.heart = { x: x + (x < W / 2 ? 60 : -60), y: y + (y < H / 2 ? 50 : -50) };
+    S.shake = Math.max(S.shake, 0.3);
+    Sound.hit();
+  }
+
   function hurtZombie(z, amount) {
     z.hp -= amount;
     z.flash = 0.1;
@@ -1819,7 +1843,7 @@ const Level = (() => {
     ui.endText.textContent = 'Five waves, and the speakers have finally gone quiet.';
     ui.endButtons.innerHTML = '';
     ui.end.classList.add('show');
-    setTimeout(() => Level.win(), 2200);
+    setTimeout(() => Level.win({ heart: S.crack.found }), 2200);
   }
 
   // ---------- Game loop ----------
@@ -1909,6 +1933,25 @@ const Level = (() => {
         }
       }
     }
+    // Your shots can crack open the cracked speaker.
+    if (!S.crack.open) {
+      const [cx, cy] = SPAWNERS[S.crack.index];
+      for (const s of S.shots) {
+        if (s.gone || s.hits.has('crack')) continue;
+        if (Math.abs(s.x - cx) < 26 + s.size && Math.abs(s.y - cy) < 30 + s.size) {
+          s.hits.add('crack');
+          hitCrack();
+          if (s.kind !== 'bass') s.gone = true;
+        }
+      }
+    }
+    if (S.crack.heart && !S.crack.found && Math.hypot(S.crack.heart.x - p.x, S.crack.heart.y - p.y) < 26) {
+      S.crack.found = true;
+      S.crack.heart = null;
+      Sound.chord([68, 72, 75, 80], 0, 1.4, 0.35);
+      S.texts.push({ x: p.x, y: p.y - 30, text: 'Hidden heart!', t: 1.6 });
+    }
+
     // Spitters' notes
     for (const sp of S.spits) {
       sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.life -= dt;
@@ -1955,6 +1998,15 @@ const Level = (() => {
       const x = sx + rand(-jig, jig), y = sy + rand(-jig, jig);
       ctx.fillStyle = '#211e28'; ctx.strokeStyle = '#5E3E84'; ctx.lineWidth = 2;
       roundRect(x - 26, y - 30, 52, 60, 6); ctx.fill(); ctx.stroke();
+      // The cracked one: faint at first, wider with every hit, then burst open
+      if (i === S.crack.index) {
+        const k = S.crack.open ? 1 : S.crack.hits / CRACK_HITS;
+        ctx.strokeStyle = `rgba(200, 190, 210, ${0.18 + k * 0.6})`; ctx.lineWidth = 1.5 + k * 1.5;
+        ctx.beginPath(); ctx.moveTo(x - 18, y - 28); ctx.lineTo(x - 8, y - 12); ctx.lineTo(x - 14, y + 2); ctx.lineTo(x - 2, y + 16);
+        if (k > 0.4) { ctx.moveTo(x - 8, y - 12); ctx.lineTo(x + 10, y - 20); }
+        if (k > 0.7) { ctx.moveTo(x - 14, y + 2); ctx.lineTo(x + 12, y + 8); }
+        ctx.stroke();
+      }
       for (const cy of [y - 13, y + 13]) {
         ctx.fillStyle = `rgba(154, 127, 224, ${0.35 + g})`;
         ctx.shadowColor = '#C8B8FF'; ctx.shadowBlur = 6 + g * 40;
@@ -1964,6 +2016,16 @@ const Level = (() => {
     });
 
     drawRings();
+
+    // The hidden heart, once it's dropped
+    if (S.crack.heart) {
+      const { x, y } = S.crack.heart, k = 1 + Math.sin(S.time * 6) * 0.08;
+      ctx.save(); ctx.translate(x, y); ctx.scale(k * 1.2, k * 1.2);
+      ctx.fillStyle = '#ff5d7a'; ctx.shadowColor = '#ff5d7a'; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.moveTo(0, 6); ctx.bezierCurveTo(-10, -2, -10, -10, -5, -10); ctx.bezierCurveTo(-2, -10, 0, -8, 0, -6);
+      ctx.bezierCurveTo(0, -8, 2, -10, 5, -10); ctx.bezierCurveTo(10, -10, 10, -2, 0, 6); ctx.fill();
+      ctx.restore();
+    }
 
     // Spitter notes
     for (const sp of S.spits) {

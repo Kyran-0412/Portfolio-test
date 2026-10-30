@@ -17,7 +17,7 @@ export const LEVEL_PATHS = {
 };
 
 // Levels that hide an extra heart (more starting hearts in boss fights).
-export const HEART_LEVELS = ['E', 'B'];
+export const HEART_LEVELS = ['E', 'B', 'Ab', 'Eb'];
 
 // The boss fights. Attempting one unlocks its attacks in the Tutorial's practice mode.
 export const BOSS_LEVELS = ['A', 'F#', 'F'];

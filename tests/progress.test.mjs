@@ -107,3 +107,9 @@ test('boss attempts are recorded once each, and beaten bosses count as attempted
   assert.deepEqual(triedBosses(beaten), ['A', 'F#'], 'beaten before attempts were recorded');
   assert.deepEqual(parseProgress(JSON.stringify({ v: 1, placed: [], held: [], tried: ['F', 'nonsense', 'A'] })).tried, ['A', 'F']);
 });
+
+test('four hidden hearts: E, B, A♭ and E♭', () => {
+  let p = { ...emptyProgress(), placed: ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb'] };
+  for (const k of ['E', 'B', 'Ab', 'Eb', 'G']) p = addHeart(p, k);
+  assert.deepEqual(p.hearts, ['E', 'B', 'Ab', 'Eb'], 'G has no heart');
+});

@@ -58,6 +58,13 @@
   .seq { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; background: #1e1c24; border: 1px solid #2c2934; border-radius: 10px; }
   .seq-row { display: flex; align-items: center; gap: 8px; }
   .seq-row.locked { opacity: 0.28; }
+  .seq-row[hidden] { display: none; }
+  .reveal {
+    align-self: flex-start; margin-left: 70px; padding: 0 6px; font: 600 12px var(--heading);
+    background: none; border: 1px solid #2c2934; color: #4a4553; box-shadow: none;
+  }
+  .reveal:hover, .reveal:focus-visible { background: none; color: var(--quiet); border-color: var(--accent); box-shadow: none; }
+  .reveal[hidden] { display: none; }
   .seq-row.locked .cell { cursor: default; }
   .row-name { width: 62px; font: 600 13px var(--heading); letter-spacing: 0.1em; color: var(--glow); text-align: right; transition: color 0.2s; }
   .seq-row.off .row-name { color: #ff8fa6; }
@@ -92,8 +99,12 @@
   // Set BEATMATCH to false to end the level after the last beat instead.
   const BEATMATCH = true;
 
-  const ROWS = ['kick', 'snare', 'hat', 'clap'];
-  const NAMES = { kick: 'Kick', snare: 'Snare', hat: 'Hi-hat', clap: 'Clap' };
+  // The shaker is a secret row: hidden until a small + shows it, only in the
+  // last beat, and never needed to pass. Rebuilding it finds the hidden heart.
+  const ROWS = ['kick', 'snare', 'hat', 'clap', 'shaker'];
+  const SECRET = 'shaker';
+  const NAMES = { kick: 'Kick', snare: 'Snare', hat: 'Hi-hat', clap: 'Clap', shaker: 'Shaker' };
+  let secretShown = false, heartFound = false;
   const BPM = 110;
   // x = a hit. Rows a round doesn't list stay locked and silent.
   const ROUNDS = [
@@ -103,7 +114,7 @@
     { problem: 'A broken beat: the kick moves.',
       beat: { kick: 'x.....x...x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' } },
     { problem: 'Everything, plus a clap.',
-      beat: { kick: 'x..x....x.x.....', snare: '....x.......x..x', hat: 'x.x.x.x.x.x.x.xx', clap: '....x.......x...' } },
+      beat: { kick: 'x..x....x.x.....', snare: '....x.......x..x', hat: 'x.x.x.x.x.x.x.xx', clap: '....x.......x...', shaker: '...x..x....x..x.' } },
   ];
   // Deck A's new tempo in the beatmatch: one of these, picked at random.
   const MATCH_TEMPOS = [98, 102, 118, 122, 126];
@@ -120,6 +131,7 @@
   window.__beat = {
     grid, get round() { return round; }, get matching() { return matching; },
     get tempoA() { return tempoA; }, get tempoB() { return tempoB; }, rounds: ROUNDS,
+    get heartFound() { return heartFound; }, get secretShown() { return secretShown; },
   };
 
   // ---------- Audio: two decks into a crossfader ----------
@@ -186,6 +198,7 @@
       o.start(t); o.stop(t + 0.12);
     },
     hat(dest, t) { noiseHit(dest, t, 0.16, 0.045, 'highpass', 8000); },
+    shaker(dest, t) { noiseHit(dest, t, 0.09, 0.07, 'bandpass', 6500, 1.5); }, // quiet, easy to miss
     clap(dest, t) {
       [0, 0.011, 0.022].forEach((d) => noiseHit(dest, t + d, 0.32, 0.03, 'bandpass', 1300, 1.4));
       noiseHit(dest, t + 0.03, 0.25, 0.16, 'bandpass', 1200, 1.2);
@@ -276,7 +289,8 @@
     ui.seq.innerHTML = '';
     ROWS.forEach((r) => {
       const row = document.createElement('div');
-      row.className = 'seq-row';
+      row.className = 'seq-row' + (r === SECRET ? ' secret' : '');
+      row.hidden = r === SECRET && !secretShown;
       row.dataset.row = r;
       row.innerHTML = `<span class="row-name">${NAMES[r].toUpperCase()}</span>
         <button class="solo" title="Solo this row on both decks">S</button><div class="cells"></div>`;
@@ -300,6 +314,21 @@
       soloBtn.onclick = () => { soloBtn.blur(); solo[r] = !solo[r]; refresh(); applyMix(); };
       ui.seq.appendChild(row);
     });
+    // The secret row's button: small and easy to miss, like Fix the Mix's hidden track.
+    const reveal = document.createElement('button');
+    reveal.className = 'reveal';
+    reveal.id = 'revealBtn';
+    reveal.title = 'Show hidden rows';
+    reveal.setAttribute('aria-label', 'Show hidden rows');
+    reveal.textContent = '+';
+    reveal.hidden = secretShown;
+    reveal.onclick = () => {
+      reveal.blur();
+      secretShown = true;
+      reveal.hidden = true;
+      ui.seq.querySelector(`[data-row="${SECRET}"]`).hidden = false;
+    };
+    ui.seq.appendChild(reveal);
   }
 
   function refresh() {
@@ -337,7 +366,7 @@
 
   function wrongRows() {
     const beat = target();
-    return ROWS.filter((r) => beat[r]).map((r) => ({
+    return ROWS.filter((r) => beat[r] && r !== SECRET).map((r) => ({ // the secret row is never required
       r, off: grid[r].filter((on, s) => on !== hits(beat[r], s)).length,
     })).filter((x) => x.off > 0);
   }
@@ -359,6 +388,9 @@
     }
     ui.check.disabled = true;
     Sound.chord([63, 67, 70, 75], 0, 1.2, 0.3);
+    // The hidden heart: the secret shaker rebuilt too, on the last beat.
+    const beat = target();
+    if (beat[SECRET] && secretShown && grid[SECRET].every((on, i) => on === hits(beat[SECRET], i))) heartFound = true;
     round++;
     if (round < ROUNDS.length) {
       say('Locked in.');
@@ -410,7 +442,7 @@
 
   function finish(text) {
     say(text);
-    setTimeout(() => { stopLoop(); Level.win(); }, 2200);
+    setTimeout(() => { stopLoop(); Level.win({ heart: heartFound }); }, 2200);
   }
 
   Level.setup({

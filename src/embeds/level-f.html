@@ -602,7 +602,7 @@
 
   function lose() {
     // Players who haven't found both hidden hearts get a nudge.
-    const hint = Level.extraHearts < 2 ? 'Hint: you can find extra hearts by exploring the levels.' : '';
+    const hint = Level.extraHearts < 4 ? 'Hint: you can find extra hearts by exploring the levels.' : ''; // four are hidden before this fight
     finish('Out of hearts', 'The circle keeps turning. The fight starts again from the top.', [
       ['Try again', () => begin(), true],
     ], hint);

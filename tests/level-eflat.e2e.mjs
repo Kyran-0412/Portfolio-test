@@ -20,6 +20,7 @@ try {
   // Clicks the grid until it matches the given beat for every listed row.
   async function enter(beat) {
     for (const [r, pattern] of Object.entries(beat)) {
+      if (r === 'shaker' && !(await frame.evaluate(() => window.__beat.secretShown))) continue; // hidden row
       for (let s = 0; s < 16; s++) {
         const on = await frame.evaluate(([row, i]) => window.__beat.grid[row][i], [r, s]);
         if (on !== (pattern[s] === 'x')) await cell(r, s).click();
@@ -30,7 +31,8 @@ try {
 
   // Round 1: only kick and snare can be clicked.
   assert.equal(await game.locator('#round').textContent(), 'Beat 1 of 4');
-  assert.equal(await game.locator('.seq-row.locked').count(), 2, 'hat and clap locked');
+  assert.equal(await game.locator('.seq-row.locked:not([hidden])').count(), 2, 'hat and clap locked');
+  assert.equal(await game.locator('.seq-row[data-row="shaker"]').isVisible(), false, 'the shaker row starts hidden');
   await cell('hat', 0).click();
   assert.equal(await frame.evaluate(() => window.__beat.grid.hat[0]), false, 'locked rows ignore clicks');
 
@@ -73,7 +75,7 @@ try {
   await enter(rounds[2].beat);
   await game.locator('#checkBtn').click();
   await game.locator('#round', { hasText: 'Beat 4 of 4' }).waitFor({ timeout: 4000 });
-  assert.equal(await game.locator('.seq-row.locked').count(), 0, 'all four rows in the last beat');
+  assert.equal(await game.locator('.seq-row.locked:not([hidden])').count(), 0, 'all four rows in the last beat');
   await enter(rounds[3].beat);
   await page.locator('#gameEmbed').screenshot({ path: `${shots}/leb-round4.png` });
   await game.locator('#checkBtn').click();
@@ -83,7 +85,7 @@ try {
   await game.locator('#round', { hasText: 'Beatmatch' }).waitFor({ timeout: 4000 });
   assert.equal(await game.locator('#tempo').isVisible(), true);
   assert.equal(await game.locator('#subA').textContent(), '??? BPM');
-  assert.equal(await game.locator('.seq-row.locked').count(), 4, 'grid locked while matching');
+  assert.equal(await game.locator('.seq-row.locked:not([hidden])').count(), 4, 'grid locked while matching');
   const tempoA = await frame.evaluate(() => window.__beat.tempoA);
   assert.notEqual(tempoA, 110);
   const setTempo = (v) => frame.evaluate((x) => {
@@ -104,6 +106,37 @@ try {
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of E♭.');
   assert.deepEqual((await saved()).held, ['Eb']);
   console.log(`✓ beatmatch: hints say faster/slower, matching ${tempoA} BPM gives the key of E♭`);
+
+  // Replay: show the hidden row and rebuild the quiet shaker too → the hidden heart.
+  {
+    await page.goto(`${base}/dev/sim.html?page=level-eflat`);
+    await game.locator('#startBtn').click();
+    const f2 = page.frames().find((f) => f.url().includes('level-eflat.html'));
+    const enter2 = async (beat) => {
+      for (const [r, pattern] of Object.entries(beat)) {
+        if (r === 'shaker' && !(await f2.evaluate(() => window.__beat.secretShown))) continue;
+        for (let s = 0; s < 16; s++) {
+          const on = await f2.evaluate(([row, i]) => window.__beat.grid[row][i], [r, s]);
+          if (on !== (pattern[s] === 'x')) await game.locator(`.cell[data-row="${r}"][data-step="${s}"]`).click();
+        }
+      }
+    };
+    await game.locator('#revealBtn').click();
+    assert.equal(await game.locator('.seq-row[data-row="shaker"]').isVisible(), true, 'the + shows the shaker row');
+    for (let i = 0; i < 4; i++) {
+      await game.locator('#round', { hasText: `Beat ${i + 1} of 4` }).waitFor({ timeout: 4000 });
+      await enter2(rounds[i].beat);
+      await game.locator('#checkBtn').click();
+    }
+    assert.equal(await f2.evaluate(() => window.__beat.heartFound), true, 'the shaker rebuilt: heart found');
+    await game.locator('#round', { hasText: 'Beatmatch' }).waitFor({ timeout: 4000 });
+    const t2 = await f2.evaluate(() => window.__beat.tempoA);
+    await f2.evaluate((x) => { const input = document.querySelector('#tempoInput'); input.value = x; input.dispatchEvent(new Event('input', { bubbles: true })); }, String(t2));
+    await game.locator('#checkBtn').click();
+    await game.locator('#heartFound').waitFor({ state: 'visible', timeout: 5000 });
+    assert.deepEqual((await saved()).hearts, ['Eb']);
+    console.log('✓ the hidden shaker row: rebuilt on the last beat, it finds the hidden heart');
+  }
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Level 10 browser checks passed.');
