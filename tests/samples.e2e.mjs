@@ -290,7 +290,7 @@ try {
   const mg = page.frameLocator('#gameEmbed');
   await mg.locator('#startBtn').click();
   const mf = page.frames().find((f) => f.url().includes('level-b.html'));
-  await mf.waitForFunction(() => Sound.samples.done && Sound.samples.loaded === 17, null, { timeout: 8000 });
+  await mf.waitForFunction(() => Sound.samples.done && Sound.samples.loaded === 24, null, { timeout: 8000 }); // piano + the guitar's 7 notes
   const keysOnPiano = await mf.evaluate(async () => {
     const a = Sound.unlock(), made = [];
     const orig = a.createBufferSource.bind(a);
@@ -304,6 +304,19 @@ try {
     return made.filter((x) => x.buffer && x.buffer.duration === pianoLen).length;
   });
   assert.ok(keysOnPiano >= 3, `the keys chord plays on the piano samples (${keysOnPiano} sample notes)`);
+  // Round 3's lead is the Feedback guitar.
+  await mf.waitForFunction(() => Sound.has('feedback'), null, { timeout: 8000 });
+  const guitar = await mf.evaluate(() => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    useSong(2);
+    playStep(0, a.currentTime + 0.05); // step 0 has a lead note in round 3
+    a.createBufferSource = orig;
+    useSong(0);
+    return made.length;
+  });
+  assert.ok(guitar >= 1, 'round 3 plays its lead on the guitar sample');
   console.log('✓ Fix the Mix: the keys channel plays your piano');
 
   // The circle loads the piano before any click, so inserting a key uses it.

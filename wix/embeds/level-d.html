@@ -873,6 +873,21 @@ const Sound = (() => {
     hold,
     // A piano note into a level's own audio node (e.g. a mixer channel), at an
     // exact audio-clock time. Returns false if no piano sample is loaded yet.
+    // The same, from a named instrument set (e.g. 'feedback'), shifted from its nearest note.
+    sampleTo(name, dest, midi, at, length, volume = 0.4) {
+      const set = named[name];
+      if (!set || set.getChannelData || !Object.keys(set).length) return false;
+      const n = nearestIn(set, midi);
+      const a = audio(), src = a.createBufferSource(), g = a.createGain();
+      src.buffer = n.buf;
+      src.playbackRate.value = n.rate;
+      g.gain.setValueAtTime(volume * SAMPLE_GAIN, at);
+      g.gain.setTargetAtTime(0.0001, at + length, 0.08);
+      src.connect(g).connect(dest);
+      src.start(at);
+      src.stop(at + length + 1);
+      return true;
+    },
     pianoTo(dest, midi, at, length, volume = 0.4) {
       const sample = nearestSample(midi);
       if (sample === null) return false;
