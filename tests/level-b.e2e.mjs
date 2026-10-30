@@ -74,6 +74,17 @@ try {
   await game.locator('[data-track="keys"] .solo').click();
   console.log('✓ round 1: checks, hint, muting refused, solo works');
 
+  // Each round plays its own song.
+  const bpms = [];
+  bpms.push(await frame.evaluate(() => window.__mix.bpm));
+  await set('lead', 'fader', 0);
+  await game.locator('#checkBtn').click();
+  await game.locator('#round', { hasText: 'Round 2 of 3' }).waitFor({ timeout: 5000 });
+  bpms.push(await frame.evaluate(() => window.__mix.bpm));
+  assert.deepEqual(bpms, [100, 84], 'round 2 is a different, slower song');
+  assert.ok(await frame.evaluate(() => document.querySelector('#playBtn').textContent.includes('Stop')), 'still playing after the switch');
+  ({ game, frame, set } = await open());
+  await game.locator('#playBtn').click();
   await fixAll(game, set);
   assert.equal(await game.locator('#foundTitle').textContent(), 'You found the key of B.');
   assert.equal(await game.locator('#heartFound').isVisible(), false);

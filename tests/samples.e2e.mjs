@@ -282,6 +282,30 @@ try {
   assert.equal(knock, 1, 'the built-in knock (one noise burst, no sample)');
   console.log('✓ doors: built-in knock, no samples loaded');
 
+  // Fix the Mix: the keys channel plays the piano samples, through the desk.
+  await page.unroute(SAMPLE);
+  await page.route(SAMPLE, (r) => r.fulfill({ body: wav, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }));
+  await page.evaluate(() => localStorage.setItem('cof-progress', JSON.stringify({ v: 1, held: [], placed: ['C', 'G', 'D', 'A', 'E'] })));
+  await page.goto(`${base}/dev/sim.html?page=level-b`);
+  const mg = page.frameLocator('#gameEmbed');
+  await mg.locator('#startBtn').click();
+  const mf = page.frames().find((f) => f.url().includes('level-b.html'));
+  await mf.waitForFunction(() => Sound.samples.done && Sound.samples.loaded === 17, null, { timeout: 8000 });
+  const keysOnPiano = await mf.evaluate(async () => {
+    const a = Sound.unlock(), made = [];
+    const orig = a.createBufferSource.bind(a);
+    a.createBufferSource = () => { const x = orig(); made.push(x); return x; };
+    document.querySelector('#playBtn').click();
+    await new Promise((r) => setTimeout(r, 400)); // the first chord (step 0)
+    a.createBufferSource = orig;
+    document.querySelector('#playBtn').click();
+    // Drum noise bursts are short buffers; piano samples are the long ones.
+    const pianoLen = Sound.unlock() && made.reduce((m, x) => Math.max(m, x.buffer ? x.buffer.duration : 0), 0);
+    return made.filter((x) => x.buffer && x.buffer.duration === pianoLen).length;
+  });
+  assert.ok(keysOnPiano >= 3, `the keys chord plays on the piano samples (${keysOnPiano} sample notes)`);
+  console.log('✓ Fix the Mix: the keys channel plays your piano');
+
   // The circle loads the piano before any click, so inserting a key uses it.
   await page.unroute(SAMPLE);
   await page.route(SAMPLE, (r) => r.fulfill({ body: wav, contentType: 'audio/wav', headers: { 'access-control-allow-origin': '*' } }));

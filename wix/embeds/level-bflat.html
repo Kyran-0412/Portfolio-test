@@ -857,6 +857,21 @@ const Sound = (() => {
     onSamples(fn) { onStatus = fn; fn(status); },
     note,
     hold,
+    // A piano note into a level's own audio node (e.g. a mixer channel), at an
+    // exact audio-clock time. Returns false if no piano sample is loaded yet.
+    pianoTo(dest, midi, at, length, volume = 0.4) {
+      const sample = nearestSample(midi);
+      if (sample === null) return false;
+      const a = audio(), src = a.createBufferSource(), g = a.createGain();
+      src.buffer = buffers[sample];
+      src.playbackRate.value = Math.pow(2, (midi - sample) / 12);
+      g.gain.setValueAtTime(volume * SAMPLE_GAIN, at);
+      g.gain.setTargetAtTime(0.0001, at + length, 0.12);
+      src.connect(g).connect(dest);
+      src.start(at);
+      src.stop(at + length + 1);
+      return true;
+    },
     chord,
     // A wrong note: a soft low buzz.
     buzz() {

@@ -103,11 +103,11 @@
   let round = 0;
   let tries = 0;
   let ui = {};
-  window.__mix = { mix, get round() { return round; }, get arpShown() { return arpShown; } };
+  window.__mix = { mix, get round() { return round; }, get arpShown() { return arpShown; }, get bpm() { return song.bpm; } };
 
   // ---------- Audio: four channels into a master bus ----------
   let ctx = null, channels = {}, master, analyser, scheduler = null, step = 0, nextTime = 0;
-  const BPM = 100, STEP = 60 / BPM / 4; // 16th notes
+  let STEP = 60 / 100 / 4; // a 16th note at the current song's tempo
 
   function buildAudio() {
     ctx = Sound.unlock();
@@ -172,30 +172,73 @@
   }
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
-  // B major: B, G♯m, E, F♯, one bar each.
-  const CHORDS = [[59, 63, 66], [56, 59, 63], [52, 56, 59], [54, 58, 61]];
-  const BASS = [35, 32, 28, 30];
-  const LEAD = [ // [step within 64, midi, length in steps]
-    [0, 71, 2], [2, 73, 2], [4, 75, 4], [8, 73, 2], [10, 71, 2], [12, 68, 4],
-    [16, 68, 2], [18, 71, 2], [20, 73, 6], [28, 75, 4],
-    [32, 76, 2], [34, 75, 2], [36, 73, 4], [40, 71, 4], [44, 68, 4],
-    [48, 70, 2], [50, 71, 2], [52, 73, 4], [56, 70, 8],
+  // Three songs in B major, one per round, so each round sounds new. Each is
+  // 4 bars of 16 steps: chords and bass roots per bar, a lead line, and
+  // patterns saying which steps (0–15 in a bar) each part plays on.
+  const SONGS = [
+    { // Round 1: steady pop groove
+      bpm: 100,
+      chords: [[59, 63, 66], [56, 59, 63], [52, 56, 59], [54, 58, 61]], // B, G♯m, E, F♯
+      bass: [35, 32, 28, 30],
+      kick: [0, 4, 8, 12], snare: [4, 12], hats: [0, 2, 4, 6, 8, 10, 12, 14],
+      bassSteps: [0, 2, 4, 6, 8, 10, 12, 14], bassUp: [6, 14], keys: [[0, 7], [8, 7]],
+      lead: [[0, 71, 2], [2, 73, 2], [4, 75, 4], [8, 73, 2], [10, 71, 2], [12, 68, 4],
+        [16, 68, 2], [18, 71, 2], [20, 73, 6], [28, 75, 4],
+        [32, 76, 2], [34, 75, 2], [36, 73, 4], [40, 71, 4], [44, 68, 4],
+        [48, 70, 2], [50, 71, 2], [52, 73, 4], [56, 70, 8]],
+    },
+    { // Round 2: slow, half-time, long chords
+      bpm: 84,
+      chords: [[52, 56, 59], [59, 63, 66], [54, 58, 61], [56, 59, 63]], // E, B, F♯, G♯m
+      bass: [28, 35, 30, 32],
+      kick: [0, 10], snare: [8], hats: [0, 2, 4, 6, 8, 10, 12, 14],
+      bassSteps: [0, 3, 8, 11], bassUp: [11], keys: [[0, 15]],
+      lead: [[0, 75, 4], [4, 73, 4], [8, 71, 8], [16, 71, 2], [18, 73, 2], [20, 75, 4], [24, 78, 8],
+        [32, 76, 4], [36, 75, 4], [40, 73, 8], [48, 75, 2], [50, 73, 2], [52, 71, 4], [56, 70, 8]],
+    },
+    { // Round 3: driving four-on-the-floor
+      bpm: 116,
+      chords: [[56, 59, 63], [52, 56, 59], [59, 63, 66], [54, 58, 61]], // G♯m, E, B, F♯
+      bass: [32, 28, 35, 30],
+      kick: [0, 4, 8, 12], snare: [4, 12], hats: [2, 6, 10, 14],
+      bassSteps: [2, 6, 10, 14], bassUp: [6, 14], keys: [[2, 1], [6, 1], [10, 1], [14, 1]],
+      lead: [[0, 75, 1], [2, 75, 1], [4, 73, 2], [6, 71, 2], [8, 73, 4], [12, 75, 4],
+        [16, 76, 1], [18, 76, 1], [20, 75, 2], [22, 73, 2], [24, 71, 8],
+        [32, 71, 1], [34, 73, 1], [36, 75, 2], [38, 78, 2], [40, 76, 4], [44, 75, 4],
+        [48, 73, 2], [50, 71, 2], [52, 70, 4], [56, 71, 8]],
+    },
   ];
+  let song = SONGS[0];
 
   function playStep(s, t) {
     const bar = Math.floor(s / 16), inBar = s % 16;
-    if (inBar % 4 === 0) { // kick on every beat
+    if (song.kick.includes(inBar)) {
       const k = tone('drums', 'sine', 150, t, 0.9, 0.003, 0.25);
       k.frequency.setValueAtTime(150, t); k.frequency.exponentialRampToValueAtTime(45, t + 0.2);
     }
-    if (inBar === 4 || inBar === 12) { noise('drums', t, 0.45, 0.16, 'bandpass', 1800); tone('drums', 'triangle', 190, t, 0.25, 0.002, 0.1); }
-    if (inBar % 2 === 0) noise('drums', t, inBar % 4 === 2 ? 0.16 : 0.09, 0.04, 'highpass', 7500);
-    if (inBar % 2 === 0) tone('bass', 'sawtooth', hz(BASS[bar] + (inBar % 8 === 6 ? 12 : 0)), t, 0.35, 0.005, STEP * 1.8, 700);
-    if (inBar === 0 || inBar === 8) CHORDS[bar].forEach((m) => tone('keys', 'triangle', hz(m), t, 0.12, 0.03, STEP * 7, 2400));
-    for (const [at, midi, len] of LEAD) if (at === s) tone('lead', 'square', hz(midi), t, 0.07, 0.01, STEP * len * 0.9, 3000);
+    if (song.snare.includes(inBar)) { noise('drums', t, 0.45, 0.16, 'bandpass', 1800); tone('drums', 'triangle', 190, t, 0.25, 0.002, 0.1); }
+    if (song.hats.includes(inBar)) noise('drums', t, inBar % 4 === 2 ? 0.16 : 0.09, song.bpm > 110 ? 0.09 : 0.04, 'highpass', 7500);
+    if (song.bassSteps.includes(inBar)) tone('bass', 'sawtooth', hz(song.bass[bar] + (song.bassUp.includes(inBar) ? 12 : 0)), t, 0.35, 0.005, STEP * 1.8, 700);
+    // Keys: your piano, into the keys channel (a soft synth if it isn't loaded).
+    for (const [at, len] of song.keys) {
+      if (at !== inBar) continue;
+      song.chords[bar].forEach((m) => {
+        if (!Sound.pianoTo(channels.keys.input, m, t, STEP * len, 0.32)) tone('keys', 'triangle', hz(m), t, 0.12, 0.03, STEP * len, 2400);
+      });
+    }
+    for (const [at, midi, len] of song.lead) if (at === s) tone('lead', 'square', hz(midi), t, 0.07, 0.01, STEP * len * 0.9, 3000);
     // The hidden arp: the bar's chord, an octave up, rippling in 16ths.
-    const arp = [...CHORDS[bar], CHORDS[bar][0] + 12];
+    const arp = [...song.chords[bar], song.chords[bar][0] + 12];
     tone('arp', 'triangle', hz(arp[[0, 1, 2, 3, 2, 1][inBar % 6]] + 12), t, 0.08, 0.004, STEP * 0.9, 4200);
+  }
+
+  // Switching song (a new round): restart the loop at the new tempo if it's playing.
+  function useSong(i) {
+    const playing = !!scheduler;
+    if (playing) stopLoop();
+    song = SONGS[i];
+    STEP = 60 / song.bpm / 4;
+    if (playing) startLoop();
   }
 
   function startLoop() {
@@ -294,6 +337,7 @@
   }
 
   function startRound() {
+    useSong(round);
     const r = ROUNDS[round];
     tries = 0;
     for (const [t, values] of Object.entries(r.set)) Object.assign(mix[t], values);
